@@ -1,0 +1,14 @@
+# Terraform の作業ディレクトリ（プロバイダーのバイナリを含む）
+.terraform/
+
+# 状態ファイル。インスタンス ID や IP アドレスを平文で保持する
+*.tfstate
+*.tfstate.*
+
+# 自身のグローバル IP を記入するため、コミットしない
+# 公開するのは terraform.tfvars.example のみ
+terraform.tfvars
+
+# クラッシュログ
+crash.log
+crash.*.log
