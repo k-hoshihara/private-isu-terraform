@@ -8,6 +8,7 @@
 # 自身のグローバル IP を記入するため、コミットしない
 # 公開するのは terraform.tfvars.example のみ
 terraform.tfvars
+*.auto.tfvars
 
 # クラッシュログ
 crash.log
