@@ -5,6 +5,11 @@ set -euxo pipefail
 # nginx のログフォーマットを JSON 形式に変更する作業は書籍の手順に従って手動で行う。
 ALP_VERSION="${alp_version}"
 WORKDIR="$(mktemp -d)"
+
+# EXIT は終了理由を問わず発火する。正常終了はもちろん、
+# ダウンロード失敗時の exit 0 や set -e による異常終了でも一時ディレクトリを削除する。
+trap 'rm -rf "$WORKDIR"' EXIT
+
 cd "$WORKDIR"
 
 if ! command -v unzip >/dev/null 2>&1; then
@@ -27,4 +32,3 @@ install -m 0755 alp /usr/local/bin/alp
 /usr/local/bin/alp --version
 
 cd /
-rm -rf "$WORKDIR"
