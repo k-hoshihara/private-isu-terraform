@@ -113,19 +113,27 @@ cd private-isu-terraform/terraform
 
 ### 3. 設定値を記入する
 
+編集対象は `terraform.tfvars` です。サンプルを複製して作ります。
+
 ```bash
 cp terraform.tfvars.example terraform.tfvars
-curl -s https://checkip.amazonaws.com   # 自身のグローバル IP
 ```
 
-出力された IP を `/32` を付けて `allowed_cidrs` に記入します。
+`allowed_cidrs` を自身のグローバル IP に置き換えます。
 
-```hcl
-allowed_cidrs = ["203.0.113.1/32"]
-
-webapp_instance_type        = "c7a.large"
-enable_benchmarker_instance = false
+```bash
+sed -i "s|203\.0\.113\.1/32|$(curl -s https://checkip.amazonaws.com)/32|" terraform.tfvars
+cat terraform.tfvars
 ```
+
+`sed` を使わない場合は `vi terraform.tfvars` を開きます。
+
+```hcl:terraform.tfvars
+allowed_cidrs = ["203.0.113.1/32"]   # ← 自身のグローバル IP
+```
+
+`terraform.tfvars` は `.gitignore` で除外しています。  
+IP を公開しないため、`variables.tf` の `default` には書かないでください。
 
 ### 4. 構築する
 
