@@ -77,6 +77,7 @@ git clone --depth=1 https://github.com/tfutils/tfenv.git ~/.tfenv
 mkdir -p ~/bin
 ln -sf ~/.tfenv/bin/* ~/bin/
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
+echo 'export TF_DATA_DIR=/tmp/.terraform' >> ~/.bashrc
 source ~/.bashrc
 
 tfenv install latest
@@ -84,10 +85,35 @@ tfenv use latest
 terraform -version
 ```
 
-### 2. 設定値を記入する
+`TF_DATA_DIR` は、`terraform init` が取得するプロバイダのバイナリの置き場所を指定する環境変数です。  
+AWS プロバイダ 6.58.0 の Linux 版バイナリは約 850MB あり、CloudShell の永続ストレージ（1GB）のほとんどを占めます。  
+`/tmp` を指定すると永続ストレージを消費しません。
+
+設定できているか確認します。
 
 ```bash
-cd terraform
+echo "$TF_DATA_DIR"
+```
+
+`/tmp/.terraform` が表示されない場合は、`~/.bashrc` への追記を確認してください。  
+既に開いているセッションには反映されないため、`source ~/.bashrc` が必要です。
+
+`/tmp` はセッションが切れると消えるため、セッションを開き直したときは `terraform init` を実行し直してください。  
+state は永続ストレージ側に残るので影響ありません。
+
+### 2. リポジトリを取得する
+
+```bash
+cd ~
+git clone https://github.com/k-hoshihara/private-isu-terraform.git
+cd private-isu-terraform/terraform
+```
+
+以降の `terraform` コマンドは、このディレクトリで実行します。
+
+### 3. 設定値を記入する
+
+```bash
 cp terraform.tfvars.example terraform.tfvars
 curl -s https://checkip.amazonaws.com   # 自身のグローバル IP
 ```
@@ -101,12 +127,22 @@ webapp_instance_type        = "c7a.large"
 enable_benchmarker_instance = false
 ```
 
-### 3. 構築する
+### 4. 構築する
 
 ```bash
 terraform init
 terraform plan
 terraform apply
+```
+
+`init` が `no space left on device` で失敗する場合は、`TF_DATA_DIR` が設定されないまま実行されています。  
+書きかけのファイルが永続ストレージに残っているため、削除してからやり直してください。
+
+```bash
+rm -rf .terraform
+source ~/.bashrc
+echo "$TF_DATA_DIR"
+terraform init
 ```
 
 完了すると接続先が出力されます。
@@ -123,7 +159,7 @@ webapp_url         = "http://203.0.113.10/"
 
 `webapp_url` をブラウザで開き、Iscogram のトップページが表示されれば構築完了です。
 
-### 4. サーバーにログインする
+### 5. サーバーにログインする
 
 ```bash
 aws ssm start-session --target $(terraform output -raw webapp_instance_id)
