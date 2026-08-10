@@ -15,7 +15,7 @@
 | --- | --- |
 | AWS アカウント | EC2・VPC・IAM ロールを作成できる権限が必要 |
 | 作業環境 | AWS CloudShell（AWS CLI v2 と Git がインストール済み） |
-| Terraform | >= 1.5 |
+| Terraform | >= 1.9 |
 | リージョン | `ap-northeast-1`（AMI の公開リージョン） |
 
 > [!WARNING]
@@ -64,6 +64,24 @@ private-isu-terraform/
 ```
 
 `terraform` コマンドは `terraform/` ディレクトリで実行します。
+
+## AMI の最新版を確認する
+
+private-isu の README に記載された AMI ID は特定日時のスナップショットのため、より新しい AMI が公開されている場合があります。  
+CloudShell から確認できます。
+
+```bash
+aws ec2 describe-images --region ap-northeast-1 \
+  --owners $(aws ec2 describe-images --region ap-northeast-1 \
+    --image-ids ami-09201e964bee13733 \
+    --query 'Images[0].OwnerId' --output text) \
+  --filters 'Name=name,Values=catatsuy_private_isu_*' \
+  --query 'sort_by(Images,&CreationDate)[].[CreationDate,Name,ImageId]' \
+  --output table
+```
+
+実際に試したところ、2025年と2026年に1回ずつ更新されていました。  
+はじめて構築する前に、一度確認してみてください。
 
 ## 使い方
 
@@ -179,42 +197,7 @@ aws ssm start-session --target $(terraform output -raw webapp_instance_id)
 インスタンスが SSM に登録されるまで起動後1〜2分ほどかかります。  
 `TargetNotConnected` が返る場合は少し待ってから再実行してください。
 
-## 主な変数
-
-| 変数 | デフォルト | 説明 |
-| --- | --- | --- |
-| `region` | `ap-northeast-1` | AMI が公開されているリージョン。通常は変更しない |
-| `allowed_cidrs` | （必須） | HTTP/SSH を許可する接続元 CIDR。`0.0.0.0/0` は不可 |
-| `ami_id` | `ami-09201e964bee13733` | private-isu 競技者用 AMI（Ubuntu 24.04 amd64、ベンチマーカー同梱） |
-| `webapp_instance_type` | `c7a.large` | 競技者用インスタンスタイプ |
-| `enable_benchmarker_instance` | `false` | ベンチマーカー専用インスタンスを作成するか。3章では `false` |
-| `benchmarker_instance_type` | `c7a.xlarge` | ベンチマーカー用インスタンスタイプ |
-| `root_volume_size` | `40` | ルートボリューム(GiB)。初期データが 1GB を超えるため余裕を持たせる |
-| `enable_ssh` | `false` | TCP/22 を開放するか。SSM のみで運用する場合は `false` |
-| `key_name` | `null` | SSH 用キーペア名。`enable_ssh = false` なら不要 |
-| `install_alp` | `true` | 起動時に alp を自動インストールするか（3-2 で使用） |
-| `alp_version` | `1.0.21` | インストールする alp のバージョン |
-| `vpc_cidr` | `10.42.0.0/16` | VPC の CIDR |
-| `subnet_cidr` | `10.42.0.0/24` | パブリックサブネットの CIDR |
-
-## AMI の最新版を確認する
-
-private-isu の README に記載された AMI ID は特定日時のスナップショットのため、より新しい AMI が公開されている場合があります。  
-CloudShell から確認できます。
-
-```bash
-aws ec2 describe-images --region ap-northeast-1 \
-  --owners $(aws ec2 describe-images --region ap-northeast-1 \
-    --image-ids ami-09201e964bee13733 \
-    --query 'Images[0].OwnerId' --output text) \
-  --filters 'Name=name,Values=catatsuy_private_isu_*' \
-  --query 'sort_by(Images,&CreationDate)[].[CreationDate,Name,ImageId]' \
-  --output table
-```
-
-更新頻度は年1回程度のため、書籍を読み始める時点で一度確認すれば十分です。
-
-## 言語実装を切り替える
+### 6. 言語実装を切り替える
 
 起動直後は Ruby の参考実装が動作しています。  
 同時に起動できる実装は1つのため、別の言語を使うときは Ruby を停止してから切り替えます。
@@ -226,7 +209,7 @@ aws ec2 describe-images --region ap-northeast-1 \
 
 Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
-## ベンチマーカーを実行する
+### 7. ベンチマーカーを実行する
 
 3章の範囲では、Web サービスと同じホスト上から `localhost` に対して実行します。
 
@@ -245,7 +228,7 @@ enable_benchmarker_instance = true
 benchmarker_instance_type   = "c7a.xlarge"
 ```
 
-## 後片付け
+### 8. 後片付け
 
 作業を中断する場合はインスタンスを停止します。
 
@@ -260,6 +243,24 @@ terraform destroy
 ```
 
 配布されている AMI にはセキュリティアップデートが適用されないため、長期間起動したままにしないでください。
+
+## 主な変数
+
+| 変数 | デフォルト | 説明 |
+| --- | --- | --- |
+| `region` | `ap-northeast-1` | AMI が公開されているリージョン。通常は変更しない |
+| `allowed_cidrs` | （必須） | HTTP/SSH を許可する接続元 CIDR。`0.0.0.0/0` は不可 |
+| `ami_id` | `ami-09201e964bee13733` | private-isu 競技者用 AMI（Ubuntu 24.04 amd64、ベンチマーカー同梱） |
+| `webapp_instance_type` | `c7a.large` | 競技者用インスタンスタイプ |
+| `enable_benchmarker_instance` | `false` | ベンチマーカー専用インスタンスを作成するか。3章では `false` |
+| `benchmarker_instance_type` | `c7a.xlarge` | ベンチマーカー用インスタンスタイプ |
+| `root_volume_size` | `40` | ルートボリューム(GiB)。初期データが 1GB を超えるため余裕を持たせる |
+| `enable_ssh` | `false` | TCP/22 を開放するか。SSM のみで運用する場合は `false` |
+| `key_name` | `null` | SSH 用キーペア名。`enable_ssh = false` なら不要 |
+| `install_alp` | `true` | 起動時に alp を自動インストールするか（3-2 で使用） |
+| `alp_version` | `1.0.21` | インストールする alp のバージョン |
+| `vpc_cidr` | `10.42.0.0/16` | VPC の CIDR |
+| `subnet_cidr` | `10.42.0.0/24` | パブリックサブネットの CIDR |
 
 ## 参考
 
