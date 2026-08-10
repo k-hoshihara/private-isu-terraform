@@ -31,7 +31,7 @@ sudo journalctl -f -u isu-python
 ```
 
 起動方法の詳細は `/etc/systemd/system/isu-python.service` に記述されています。  
-Flask アプリケーションを gunicorn が `8080` で起動し、nginx がその前段に立ちます。
+Flask アプリケーションを gunicorn が `8080` で起動し、nginx が前段に立ちます。
 
 ## ソースを変更した場合
 

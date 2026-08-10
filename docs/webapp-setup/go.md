@@ -31,7 +31,7 @@ sudo journalctl -f -u isu-go
 ```
 
 起動方法の詳細は `/etc/systemd/system/isu-go.service` に記述されています。  
-アプリケーションは `127.0.0.1:8080` を listen し、nginx がその前段に立ちます。
+アプリケーションは `127.0.0.1:8080` を listen し、nginx が前段に立ちます。
 
 ## ソースを変更したらビルドする
 
