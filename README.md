@@ -119,17 +119,20 @@ cd private-isu-terraform/terraform
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-`allowed_cidrs` を自身のグローバル IP に置き換えます。
+`allowed_cidrs` を自身のグローバル IP に置き換えます。  
+IP はブラウザで https://checkip.amazonaws.com を開いて確認してください。  
+CloudShell で `curl` を実行すると、CloudShell 自身の IP が返ります。
 
 ```bash
-sed -i "s|203\.0\.113\.1/32|$(curl -s https://checkip.amazonaws.com)/32|" terraform.tfvars
+MY_IP=203.0.113.1   # ブラウザで確認した値に置き換える
+sed -i "s|203\.0\.113\.1/32|${MY_IP}/32|" terraform.tfvars
 cat terraform.tfvars
 ```
 
-`sed` を使わない場合は `vi terraform.tfvars` を開きます。
+`sed` を使わない場合は `vi terraform.tfvars` を開き、同じ値を書きます。
 
 ```hcl:terraform.tfvars
-allowed_cidrs = ["203.0.113.1/32"]   # ← 自身のグローバル IP
+allowed_cidrs = ["203.0.113.1/32"]   # ← ブラウザで確認した IP
 ```
 
 `terraform.tfvars` は `.gitignore` で除外しています。  
