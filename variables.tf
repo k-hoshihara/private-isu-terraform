@@ -77,6 +77,13 @@ variable "key_name" {
   description = "SSH 用キーペア名。enable_ssh = false の場合は null のままとする。"
   type        = string
   default     = null
+
+  # enable_ssh = true で未指定だと、22 番ポートを開けたのにキーペアが設定されず、
+  # SSH でログインできないインスタンスになる。
+  validation {
+    condition     = !var.enable_ssh || (var.key_name != null && var.key_name != "")
+    error_message = "enable_ssh = true の場合は key_name に既存の EC2 キーペア名を指定してください。"
+  }
 }
 
 variable "install_alp" {

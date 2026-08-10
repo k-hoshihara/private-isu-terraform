@@ -1,5 +1,6 @@
 terraform {
-  required_version = ">= 1.5"
+  # 1.9 以降。variable の validation から別の変数を参照するために必要
+  required_version = ">= 1.9"
 
   required_providers {
     aws = {
