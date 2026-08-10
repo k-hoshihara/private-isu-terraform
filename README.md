@@ -47,6 +47,7 @@
 ```
 private-isu-terraform/
 ├── terraform/
+│   ├── .terraform.lock.hcl      # プロバイダーのバージョンを固定
 │   ├── versions.tf              # プロバイダーとバージョン制約
 │   ├── variables.tf             # 設定値
 │   ├── network.tf               # VPC / サブネット / IGW / ルートテーブル
