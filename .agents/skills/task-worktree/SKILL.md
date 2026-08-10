@@ -8,20 +8,25 @@ description: >-
   land を頼まれたら feature/<topic> へ 1 コミット（main でも develop/<topic> でもない）し、
   子 worktree を消す。この組が標準の land。ストリームの diff は
   develop/<topic>...feature/<topic> であり origin/main ではない。
-  まとまった実装タスクの開始、worktree / 別ワークツリー / 子 worktree の依頼、
-  子タスクとしてエージェントを並べる依頼、このリポジトリを新しいタスクで編集する前に使う。
-  読み取り専用の質問には使わない。
+  ユーザーの現メッセージに「子タスク」「サブタスク」「子エージェント」「サブエージェント」の
+  いずれか（または子として起動してほしい旨の明示）があるときのみ使う。
+  合図がない実装タスクでは子を切らず親のまま行う。読み取り専用の質問には使わない。
 ---
 
 # タスク用 worktree
 
 ポリシーはリポジトリルートの `AGENTS.md`。この skill は手順。
 
-## いつ使うか
+## いつ使うか（合図があるときのみ）
 
-まとまった実装タスク（コード、教材 Markdown、ツリーを変える設定）で使う。
+子の worktree＋別エージェントを立てるのは、ユーザーの**現メッセージ**に次のいずれかがあるときのみ。
+過去メッセージの合図は引き継がない。
 
-質問、読み取り専用の調査、一行の確認は親 worktree のまま行う。
+- 「子タスク」「サブタスク」「子エージェント」「サブエージェント」のいずれかの語
+- または子（サブ）として起動してほしい旨の明示（例: 「子worktreeを切って」「別エージェントで並べて」）
+
+合図がない場合（まとまった実装タスクであっても）は子を切らず、親 worktree のまま実装する。
+質問、読み取り専用の調査、一行の確認も親 worktree のまま行う。
 
 ## Orca CLI を決める
 
@@ -82,16 +87,16 @@ ORCA worktree current --json
 
 Orca の系統は親の上に積む。`--base-branch` に親の `feature/<topic>` を明示する。省略しない（Orca はリポジトリ既定、通常 `origin/main` を使う）。`--no-parent` は使わない。
 
-### 2a. 子でエージェントを起動する（既定）
+### 2a. 子でエージェントを起動する（合図があったときのみ）
 
-まとまった実装タスクでは、worktree を切る**と同時に**その中で別エージェントを起動する。
+合図があったときのみ、worktree を切る**と同時に**その中で別エージェントを起動する。
 親はこのセッションのままコーディネータとして残る。自分で子パスに移って実装して終わったことにしない。
 
 ```text
 ORCA worktree create --name <task-slug> --parent-worktree active --base-branch <feature/<topic>> --agent <current-agent> --prompt "<task brief>" --json
 ```
 
-- `--agent` は現在起動中のエージェントの ID を指定する（例: `grok` / `claude` / `codex` / `opencode` などインストール済み TUI）。ユーザーが指名したらそれを使う。指名が無ければこのセッションと同じエージェントを使い、同一モデルが選べる場合は同一モデルにする。`grok` に固定しない。
+- `--agent` は**このセッションと同じエージェント**の ID を指定する。自分が何で起動しているかを起点に決める（例: Claude Codeで動いていれば Claude 系、OpenCodeなら `opencode`）。別製品を既定にしたり決め打ち（例: 常に `codex`）したりしない。ユーザーが指名したら指名を優先する。同一モデルが選べる場合は同一モデルにする。
 - `--prompt` に作業内容を渡す。長文は親 worktree に指示ファイルを置き、prompt はその絶対パスを読ませる（CLI の長さ制限を避ける）。
 - `--prompt` に進捗表示の指示を必ず含める。子は作業の節目で `ORCA worktree set --worktree active --comment "<短い進捗>"` を実行し、完了時は `--workspace-status in-review` にする。
 - 言語トラックや独立した成果物ごとに **1 worktree = 1 エージェント**。同じ子に二重にエージェントを足さない（役割別の複数は 2c）。
@@ -109,18 +114,11 @@ ORCA terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 ORCA terminal send --terminal <handle> --text "<task brief>" --enter --json
 ```
 
-### 2b. 親が子のパスで実装する（軽微なときのみ）
+### 2b. 合図がなければ親のまま実装する（既定）
 
-質問・読み取り専用の調査・一行の確認に準ずる軽微さで、別エージェントを立てるほどでもないときだけ `--agent` を付けず、このセッションが子のパスで作業する。
-まとまった実装タスクの既定は 2a であり、こちらは例外である。
-
-Orca CLI が使えないことは 2b の理由にならない（`git worktree add` で代替作成しない。CLI 復旧が先）。
-
-```text
-ORCA worktree create --name <task-slug> --parent-worktree active --base-branch <feature/<topic>> --json
-```
-
-JSON から worktree の完全な `id`（`<repoId>::<path>`）と、子のファイルシステムパス / 新しいブランチ名を控える。
+「いつ使うか」の合図がないときは子を切らず、このセッションが親 worktree のまま実装する。
+まとまった実装タスクでも既定はここであり、2a は例外である。
+親のまま実装するときも `AGENTS.md`（コミットしない、レビューで止まる）は守る。
 
 ### 2c. 子のエージェントは worktree に紐づく foreground task セッションとして起動する
 
@@ -209,7 +207,7 @@ git フォールバック: `git worktree remove <child-path>`。
 
 land に失敗して子に未コミット作業が残っているなら `worktree rm` しない。merge や rebase がコンフリクトしたら親で止めて報告する。
 
-2a・2c の子（中でエージェントを起動した子）を閉じるときは、次の「6. 子タスクをクローズする」に従う（Agent停止のため `terminal close --all` が要る）。2b（親が実装した子）に Agent はいない。
+2a・2c の子（中でエージェントを起動した子）を閉じるときは、次の「6. 子タスクをクローズする」に従う（Agent停止のため `terminal close --all` が要る）。
 
 ## 6. 子タスクをクローズする（ユーザーが明示したとき）
 

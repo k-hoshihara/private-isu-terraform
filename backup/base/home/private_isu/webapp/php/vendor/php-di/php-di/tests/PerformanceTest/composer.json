@@ -1,0 +1,18 @@
+{
+    "autoload": {
+        "psr-4": {
+            "DI\\": "../../src/"
+        },
+        "files": [
+            "../../src/functions.php"
+        ]
+    },
+    "require": {
+        "php": ">=7.0.0",
+        "psr/container": "^1.0",
+        "php-di/invoker": "^2.0",
+        "php-di/phpdoc-reader": "^2.0.1",
+        "doctrine/annotations": "~1.2",
+        "roave/better-reflection": "^1.2.0"
+    }
+}

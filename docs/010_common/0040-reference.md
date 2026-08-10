@@ -1,7 +1,7 @@
 # 0040 参照
 
 ログの切り方、台数、レギュレーション寄りの約束。手順の本体は [0010-setup.md](0010-setup.md) / [0020-measure.md](0020-measure.md) / [0030-ops.md](0030-ops.md)。  
-役割分割（[040_practice/0020-split.md](../040_practice/0020-split.md)）や計測ドリル（[040_practice/0030-measure.md](../040_practice/0030-measure.md)）からもここにリンクする。
+役割分割（[040_practice/0020-split.md](../040_practice/0020-split-1.md)）や計測ドリル（[040_practice/0030-measure.md](../040_practice/0030-measure.md)）からもここにリンクする。
 
 当日の値は [config.env.example](../../config.env.example) を `config.env` に複製して埋める。
 
