@@ -54,7 +54,11 @@ private-isu-terraform/
 ├── ec2.tf                   # EC2 インスタンス
 ├── outputs.tf               # 接続先 IP / インスタンス ID
 ├── user_data.sh.tftpl       # alp の自動インストール
-└── terraform.tfvars.example # 設定値のサンプル
+├── terraform.tfvars.example # 設定値のサンプル
+└── docs/
+    └── webapp-setup/        # 言語実装ごとの切り替え手順
+        ├── go.md
+        └── python.md
 ```
 
 ## 使い方
@@ -161,23 +165,14 @@ aws ec2 describe-images --region ap-northeast-1 \
 ## 言語実装を切り替える
 
 起動直後は Ruby の参考実装が動作しています。  
-Go に切り替える場合は systemd のサービスを入れ替えます。
+同時に起動できる実装は1つのため、別の言語を使うときは Ruby を停止してから切り替えます。
 
-```bash
-sudo systemctl stop isu-ruby
-sudo systemctl disable isu-ruby
+手順は言語ごとに分けています。
 
-sudo systemctl start isu-go
-sudo systemctl enable isu-go
-```
+- [Go](docs/webapp-setup/go.md)
+- [Python](docs/webapp-setup/python.md)
 
-Go はコンパイル言語のため、ソースを編集したらビルドしてから再起動します。
-
-```bash
-cd /home/isucon/private_isu/webapp/golang
-go build -o app
-sudo systemctl restart isu-go
-```
+Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
 ## ベンチマーカーを実行する
 
