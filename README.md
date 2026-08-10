@@ -126,7 +126,7 @@ sed -i "s|203\.0\.113\.1/32|$(curl -s https://checkip.amazonaws.com)/32|" terraf
 cat terraform.tfvars
 ```
 
-手で編集する場合は `vi terraform.tfvars` を開きます。
+`sed` を使わない場合は `vi terraform.tfvars` を開きます。
 
 ```hcl:terraform.tfvars
 allowed_cidrs = ["203.0.113.1/32"]   # ← 自身のグローバル IP
