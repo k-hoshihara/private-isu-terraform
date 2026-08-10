@@ -236,6 +236,22 @@ benchmarker_instance_type   = "c7a.xlarge"
 aws ec2 stop-instances --instance-ids $(terraform output -raw webapp_instance_id)
 ```
 
+再開するときは起動します。
+
+```bash
+aws ec2 start-instances --instance-ids $(terraform output -raw webapp_instance_id)
+```
+
+停止して起動すると、パブリック IP が変わります。Elastic IP を付けていないためです。  
+`terraform output webapp_url` は state の値を返すため、起動しただけでは古い IP のままです。
+
+```bash
+terraform apply -refresh-only
+terraform output webapp_url
+```
+
+プライベート IP とインスタンス ID は変わらないので、SSM のログインコマンドはそのまま使えます。
+
 不要になったら削除します。
 
 ```bash
