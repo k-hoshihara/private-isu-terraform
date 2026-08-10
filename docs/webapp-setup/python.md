@@ -13,8 +13,10 @@ sudo systemctl start isu-python
 sudo systemctl enable isu-python
 ```
 
-`disable` と `enable` は、インスタンスを再起動したときにどちらが立ち上がるかを決めます。  
-これを忘れると、停止・起動のたびに Ruby へ戻ります。
+`disable` と `enable` は、OS の起動時にどちらのサービスが自動起動するかを決めます。  
+`systemctl` での手動の停止・起動には影響しません。
+
+これを忘れると、インスタンスを再起動したときや、停止して起動し直したときに Ruby が立ち上がります。
 
 ## 動作を確認する
 
