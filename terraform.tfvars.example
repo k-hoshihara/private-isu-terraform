@@ -1,0 +1,16 @@
+# terraform.tfvars として複製し、値を編集する
+
+# 自身のグローバル IP を /32 で指定する。確認: curl -s https://checkip.amazonaws.com
+allowed_cidrs = ["203.0.113.1/32"]
+
+# 3 章の範囲では変更不要
+webapp_instance_type        = "c7a.large"
+enable_benchmarker_instance = false
+
+# 4 章以降、ベンチマーカーを別インスタンスに分離する場合
+# enable_benchmarker_instance = true
+# benchmarker_instance_type   = "c7a.xlarge"
+
+# SSM ではなく SSH を使用する場合のみ
+# enable_ssh = true
+# key_name   = "my-keypair"
