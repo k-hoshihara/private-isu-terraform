@@ -30,6 +30,55 @@ resource "aws_vpc_security_group_ingress_rule" "webapp_ssh" {
   ip_protocol       = "tcp"
 }
 
+# 複数台分割: nginx → gunicorn:8080、アプリ → mysqld:3306、必要なら memcached
+resource "aws_vpc_security_group_ingress_rule" "webapp_from_self_http" {
+  security_group_id            = aws_security_group.webapp.id
+  description                  = "HTTP from competitor fleet"
+  referenced_security_group_id = aws_security_group.webapp.id
+  from_port                    = 80
+  to_port                      = 80
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "webapp_from_self_app" {
+  security_group_id            = aws_security_group.webapp.id
+  description                  = "gunicorn from competitor fleet"
+  referenced_security_group_id = aws_security_group.webapp.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "webapp_from_self_mysql" {
+  security_group_id            = aws_security_group.webapp.id
+  description                  = "MySQL from competitor fleet"
+  referenced_security_group_id = aws_security_group.webapp.id
+  from_port                    = 3306
+  to_port                      = 3306
+  ip_protocol                  = "tcp"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "webapp_from_self_memcached" {
+  security_group_id            = aws_security_group.webapp.id
+  description                  = "memcached from competitor fleet"
+  referenced_security_group_id = aws_security_group.webapp.id
+  from_port                    = 11211
+  to_port                      = 11211
+  ip_protocol                  = "tcp"
+}
+
+# 台間 rsync / SSH。enable_ssh = true のときだけ。SSM のみなら不要
+resource "aws_vpc_security_group_ingress_rule" "webapp_from_self_ssh" {
+  count = var.enable_ssh ? 1 : 0
+
+  security_group_id            = aws_security_group.webapp.id
+  description                  = "SSH from competitor fleet"
+  referenced_security_group_id = aws_security_group.webapp.id
+  from_port                    = 22
+  to_port                      = 22
+  ip_protocol                  = "tcp"
+}
+
 # 別インスタンスのベンチマーカーからの負荷リクエスト
 resource "aws_vpc_security_group_ingress_rule" "webapp_http_from_benchmarker" {
   count = var.enable_benchmarker_instance ? 1 : 0
