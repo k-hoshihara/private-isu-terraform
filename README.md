@@ -46,20 +46,24 @@
 
 ```
 private-isu-terraform/
-├── versions.tf              # プロバイダーとバージョン制約
-├── variables.tf             # 設定値
-├── network.tf               # VPC / サブネット / IGW / ルートテーブル
-├── security_groups.tf       # セキュリティグループ
-├── iam.tf                   # SSM 用 IAM ロール / インスタンスプロファイル
-├── ec2.tf                   # EC2 インスタンス
-├── outputs.tf               # 接続先 IP / インスタンス ID
-├── user_data.sh.tftpl       # alp の自動インストール
-├── terraform.tfvars.example # 設定値のサンプル
+├── terraform/
+│   ├── .terraform.lock.hcl      # プロバイダーのバージョンを固定
+│   ├── versions.tf              # プロバイダーとバージョン制約
+│   ├── variables.tf             # 設定値
+│   ├── network.tf               # VPC / サブネット / IGW / ルートテーブル
+│   ├── security_groups.tf       # セキュリティグループ
+│   ├── iam.tf                   # SSM 用 IAM ロール / インスタンスプロファイル
+│   ├── ec2.tf                   # EC2 インスタンス
+│   ├── outputs.tf               # 接続先 IP / インスタンス ID
+│   ├── user_data.sh.tftpl       # alp の自動インストール
+│   └── terraform.tfvars.example # 設定値のサンプル
 └── docs/
-    └── webapp-setup/        # 言語実装ごとの切り替え手順
+    └── webapp-setup/            # 言語実装ごとの切り替え手順
         ├── go.md
         └── python.md
 ```
+
+`terraform` コマンドは `terraform/` ディレクトリで実行します。
 
 ## 使い方
 
@@ -83,6 +87,7 @@ terraform -version
 ### 2. 設定値を記入する
 
 ```bash
+cd terraform
 cp terraform.tfvars.example terraform.tfvars
 curl -s https://checkip.amazonaws.com   # 自身のグローバル IP
 ```
