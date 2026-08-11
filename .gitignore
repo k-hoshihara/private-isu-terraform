@@ -13,3 +13,6 @@ terraform.tfvars
 # クラッシュログ
 crash.log
 crash.*.log
+
+# 個人用メモ
+localmemo.md

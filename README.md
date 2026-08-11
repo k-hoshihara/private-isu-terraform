@@ -85,7 +85,9 @@ aws ec2 describe-images --region ap-northeast-1 \
 
 ## 使い方
 
-### 1. Terraform を導入する（CloudShell 初回のみ）
+### 1. 必要なツールを準備する
+
+#### 1-a. Terraform を導入する（CloudShell 初回のみ）
 
 CloudShell に Terraform は含まれていないため、tfenv 経由で導入します。  
 ホームディレクトリは永続化されるため、次回以降のセッションでは不要です。
@@ -118,6 +120,17 @@ echo "$TF_DATA_DIR"
 
 `/tmp` はセッションが切れると消えるため、セッションを開き直したときは `terraform init` を実行し直してください。  
 state は永続ストレージ側に残るので影響ありません。
+
+#### 1-b. AWS CLI を確認する
+
+AWS CloudShell には AWS CLI v2 がインストール済みです。  
+次のコマンドで確認します。
+
+```bash
+aws --version
+```
+
+`aws-cli/2.x.x` のように表示されれば、PATH も通っています。
 
 ### 2. リポジトリを取得する
 
