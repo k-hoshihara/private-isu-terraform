@@ -67,7 +67,7 @@ private-isu-terraform/
 
 ## 使い方
 
-### 1. 必要なツールを導入する
+### 1. 必要なツールを準備する
 
 #### 1-a. Terraform を導入する（CloudShell 初回のみ）
 
@@ -106,14 +106,13 @@ state は永続ストレージ側に残るので影響ありません。
 #### 1-b. AWS CLI を確認する
 
 AWS CloudShell には AWS CLI v2 がインストール済みです。  
-PATH が通っているか、次のコマンドで確認します。
+次のコマンドで確認します。
 
 ```bash
-which aws
 aws --version
 ```
 
-`which aws` で実行ファイルのパスが表示され、`aws --version` で `aws-cli/2.x.x` のように表示されれば問題ありません。
+`aws-cli/2.x.x` のように表示されれば、PATH も通っています。
 
 ### 2. リポジトリを取得する
 
