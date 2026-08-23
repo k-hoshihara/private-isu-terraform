@@ -1,0 +1,7 @@
+# backend.hcl として複製し、bucket を自分のアカウント用に書き換える。
+# バケット名の推奨形式:
+#   接頭辞なし  private-isu-tfstate-<AWSアカウントID>
+#   接頭辞あり  <接頭辞>-private-isu-tfstate-<AWSアカウントID>
+#
+# 作り方はリポジトリ README「3. state 用 S3 バケット」。
+bucket = "private-isu-tfstate-123456789012"

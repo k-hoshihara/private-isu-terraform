@@ -13,10 +13,11 @@
 
 | 項目 | 内容 |
 | --- | --- |
-| AWS アカウント | EC2・VPC・IAM ロールを作成できる権限が必要 |
+| AWS アカウント | EC2・VPC・IAM・S3（state 用バケット）を操作できる権限が必要 |
 | 作業環境 | AWS CloudShell（AWS CLI v2 と Git がインストール済み） |
-| Terraform | >= 1.9 |
+| Terraform | >= 1.10（S3 backend の `use_lockfile` に必要） |
 | リージョン | `ap-northeast-1`（AMI の公開リージョン） |
+| state の保存先 | S3（CloudShell のホームが消えても `terraform destroy` 可能） |
 
 > [!WARNING]
 > `c7a.large` は起動している間、課金が発生します。  
@@ -46,8 +47,12 @@
 
 ```
 private-isu-terraform/
+├── config.env.example           # 当日変数のメモ（ひな形）
+├── etc/                         # nginx / mysql / alp の設定テンプレ
 ├── terraform/
 │   ├── .terraform.lock.hcl      # プロバイダーのバージョンを固定
+│   ├── backend.tf               # S3 backend（bucket 名以外）
+│   ├── backend.hcl.example      # bucket 名のサンプル（複製して backend.hcl にする）
 │   ├── versions.tf              # プロバイダーとバージョン制約
 │   ├── variables.tf             # 設定値
 │   ├── network.tf               # VPC / サブネット / IGW / ルートテーブル
@@ -57,18 +62,20 @@ private-isu-terraform/
 │   ├── outputs.tf               # 接続先 IP / インスタンス ID
 │   ├── user_data.sh.tftpl       # alp の自動インストール
 │   └── terraform.tfvars.example # 設定値のサンプル
-└── docs/
-    └── webapp-setup/            # 言語実装ごとの切り替え手順
-        ├── go.md
-        └── python.md
+├── docs/
+    ├── README.md
+    ├── 00100-env.md             # 練習環境の構築
+    ├── 00200-setup.md           # 初動
+    ├── 00300-measure.md         # 計測・インデックス
+    ├── 00400-ops.md             # 配布・終盤
+    ├── prompts/
+    └── webapp-setup/
 ```
 
 `terraform` コマンドは `terraform/` ディレクトリで実行します。
 
-## AMI の最新版を確認する
 
-private-isu の README に記載された AMI ID は特定日時のスナップショットのため、より新しい AMI が公開されている場合があります。  
-CloudShell から確認できます。
+## 手順書
 
 ```bash
 aws ec2 describe-images --region ap-northeast-1 \
@@ -285,29 +292,8 @@ state には、Terraform が作成した AWS リソースの ID が記録され�
 
 | 期間 | 対応 |
 | --- | --- |
-| 数日から数週間 | インスタンスを停止します。EBS の料金のみ発生します |
-| 1ヶ月以上 | `terraform destroy` で削除します。state に何も残らない状態にしておくと安全です |
-
-なお、CloudShell のセッションが切れても state は消えません。  
-消えるのは前述の120日経過と、自身で削除した場合だけです。
-
-## 主な変数
-
-| 変数 | デフォルト | 説明 |
-| --- | --- | --- |
-| `region` | `ap-northeast-1` | AMI が公開されているリージョン。通常は変更しない |
-| `allowed_cidrs` | （必須） | HTTP/SSH を許可する接続元 CIDR。`0.0.0.0/0` は不可 |
-| `ami_id` | `ami-09201e964bee13733` | private-isu 競技者用 AMI（Ubuntu 24.04 amd64、ベンチマーカー同梱） |
-| `webapp_instance_type` | `c7a.large` | 競技者用インスタンスタイプ |
-| `enable_benchmarker_instance` | `false` | ベンチマーカー専用インスタンスを作成するか。3章では `false` |
-| `benchmarker_instance_type` | `c7a.xlarge` | ベンチマーカー用インスタンスタイプ |
-| `root_volume_size` | `40` | ルートボリューム(GiB)。初期データが 1GB を超えるため余裕を持たせる |
-| `enable_ssh` | `false` | TCP/22 を開放するか。SSM のみで運用する場合は `false` |
-| `key_name` | `null` | SSH 用キーペア名。`enable_ssh = false` なら不要 |
-| `install_alp` | `true` | 起動時に alp を自動インストールするか（3-2 で使用） |
-| `alp_version` | `1.0.21` | インストールする alp のバージョン |
-| `vpc_cidr` | `10.42.0.0/16` | VPC の CIDR |
-| `subnet_cidr` | `10.42.0.0/24` | パブリックサブネットの CIDR |
+| 練習用 EC2 を立てる・止める | [docs/00100-env.md](docs/00100-env.md) |
+| 競技当日 | [docs/README.md](docs/README.md) |
 
 ## 参考
 

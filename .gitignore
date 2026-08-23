@@ -2,13 +2,22 @@
 .terraform/
 
 # 状態ファイル。インスタンス ID や IP アドレスを平文で保持する
+# 本番の state は S3 に置く。ローカルに残った場合の誤コミット防止用
 *.tfstate
 *.tfstate.*
+
+# S3 backend のバケット名（アカウント固有）。公開するのは backend.hcl.example のみ
+backend.hcl
 
 # 自身のグローバル IP を記入するため、コミットしない
 # 公開するのは terraform.tfvars.example のみ
 terraform.tfvars
 *.auto.tfvars
+
+# 当日にだけ作るメモ・出力（リポジトリには置かない）
+config.env
+/results/
+/imported/
 
 # クラッシュログ
 crash.log
