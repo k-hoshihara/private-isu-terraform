@@ -4,9 +4,12 @@ locals {
   }) : null
 }
 
-# 競技者用インスタンス。ベンチマーカーが同梱されているため、
-# 3 章の範囲であればこの 1 台のみで localhost に対する負荷試験を実行できる。
+# 競技者用インスタンス。既定 3 台。AMI はオールインワンなので、
+# 起動直後は各台で nginx / gunicorn / MySQL が動く。役割分割は手順書側。
+# 1 台に戻す: webapp_instance_count = 1
 resource "aws_instance" "webapp" {
+  count = var.webapp_instance_count
+
   ami                    = var.ami_id
   instance_type          = var.webapp_instance_type
   subnet_id              = aws_subnet.public.id
@@ -32,7 +35,7 @@ resource "aws_instance" "webapp" {
     http_endpoint = "enabled"
   }
 
-  tags = { Name = "${var.name_prefix}-webapp" }
+  tags = { Name = "${var.name_prefix}-webapp-${count.index + 1}" }
 }
 
 # 4 章以降、ベンチマーカーの消費リソースが無視できなくなった場合に分離する

@@ -1,0 +1,28 @@
+# 1 項目ずつコメントを外して計測する。まとめて有効化しないこと。
+# innodb_buffer_pool_size は効かない・逆効果の報告がある。
+# 適用は scripts にしない。1 項目ずつ外してから docs/common/00400-ops.md の scp 例で配る。
+
+[mysqld]
+# --- slow query（setup-logs.sh でも入れる。終盤は logs-off で止める） ---
+# slow_query_log = 1
+# slow_query_log_file = /var/log/mysql/mysql-slow.log
+# long_query_time = 0
+
+# --- connections ---
+# max_connections = 200
+
+# --- InnoDB buffer ---
+# メモリの 50〜70% が教科書的だが、ISUCON の小さめデータでは効かないことがある。
+# innodb_buffer_pool_size = 1G
+# innodb_buffer_pool_instances = 1
+
+# --- flush ---
+# innodb_flush_log_at_trx_commit = 2
+# sync_binlog = 0
+
+# --- log ---
+# innodb_log_file_size = 256M
+
+# --- tmp ---
+# tmp_table_size = 64M
+# max_heap_table_size = 64M

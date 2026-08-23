@@ -45,6 +45,21 @@ variable "webapp_instance_type" {
   default     = "c7a.large"
 }
 
+variable "webapp_instance_count" {
+  description = <<-EOT
+    競技者用インスタンスの台数。既定は 3（ISUCON 本番に近い複数台練習）。
+    1 台にすると AMI のオールインワンのまま localhost ベンチできる。
+    役割の割り当ては Terraform では固定せず、docs/heavy/multi/00500-multi-server.md で入れ替える。
+  EOT
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.webapp_instance_count >= 1
+    error_message = "webapp_instance_count は 1 以上にしてください。"
+  }
+}
+
 variable "enable_benchmarker_instance" {
   description = <<-EOT
     ベンチマーカー専用インスタンスを作成するかどうか。
