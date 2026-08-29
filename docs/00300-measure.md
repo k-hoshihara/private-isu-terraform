@@ -1,10 +1,10 @@
 # 計測
 
-alp → slp。DB が抜けてから py-spy。配布は [00400-ops.md](00400-ops.md)。
+alp → slp。DB が抜けてから py-spy。配布は [00400-ops.md](00400-ops.md)。ログの切り方は [00700-reference.md](00700-reference.md#ログを切る)。
 
 ## 1 サイクル
 
-1. ログを空にする  
+1. ログを切る  
 2. 公式ベンチ  
 3. alp → スロークエリ  
 4. 残すなら `mkdir ~/bench-notes` して点数を書く  
@@ -24,10 +24,30 @@ DB がまだ重い（スローが多い、CPU が mysqld）うちは alp と slp
 
 ## ベンチ直前
 
+理由と複数台の回し方は [00700-reference.md](00700-reference.md#ログを切る)。  
+MySQL slow は `truncate` しない（先頭が NUL のスパースファイルになる）。
+
+nginx（app 台。推奨は mv + reopen）:
+
 ```bash
-sudo truncate -s 0 /var/log/nginx/access.log
-sudo truncate -s 0 /var/log/mysql/mysql-slow.log
+TS=$(date +%Y%m%d%H%M%S)
+sudo mv /var/log/nginx/access.log /var/log/nginx/access.log.$TS
+sudo nginx -s reopen
 ```
+
+MySQL（db 台）:
+
+```bash
+TS=$(date +%Y%m%d%H%M%S)
+sudo mv /var/log/mysql/mysql-slow.log /var/log/mysql/mysql-slow.log.$TS
+sudo mysqladmin flush-logs
+```
+
+```bash
+df -h /
+```
+
+nginx だけなら `sudo truncate -s 0 /var/log/nginx/access.log` でも空になる（`O_APPEND`。履歴は消える）。slow には使わない。
 
 ## alp
 
@@ -132,7 +152,7 @@ uptime; free -h; df -h /; iostat -xz 1 3
 
 ### alp が空 / パスが割れすぎ
 
-ログを空にした直後や、フォーマットが LTSV でない。`head` で 1 行見て `alp ltsv` / `json` / `regexp` を合わせる。ID 付き URL は `-m` でまとめる。
+ログを切った直後や、フォーマットが LTSV でない。`head` で 1 行見て `alp ltsv` / `json` / `regexp` を合わせる。ID 付き URL は `-m` でまとめる。reopen を忘れていると新しい `access.log` は空のまま。
 
 ### slp がファイル無し
 
