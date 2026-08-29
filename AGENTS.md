@@ -25,4 +25,4 @@ Questions, read-only investigation, and tiny one-line answers stay in the parent
 
 ## Project
 
-Terraform for [catatsuy/private-isu](https://github.com/catatsuy/private-isu) on AWS (`ap-northeast-1`). Run `terraform` in `terraform/`. Operational docs live in `docs/` (lite / heavy / local × single / multi; shared files in `docs/common/`). Do not `terraform apply` / `destroy` unless the user asks.
+Terraform for [catatsuy/private-isu](https://github.com/catatsuy/private-isu) on AWS (`ap-northeast-1`). Run `terraform` in `terraform/`. Operational docs live in `docs/` (`010_common` / `040_practice`; files numbered 0010, 0020, …). Do not `terraform apply` / `destroy` unless the user asks.

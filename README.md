@@ -49,29 +49,27 @@
 private-isu-terraform/
 ├── config.env.example           # 当日変数のメモ（ひな形）
 ├── etc/                         # nginx / mysql / alp の設定テンプレ
-├── terraform/
-│   ├── .terraform.lock.hcl      # プロバイダーのバージョンを固定
-│   ├── backend.tf               # S3 backend（bucket 名以外）
-│   ├── backend.hcl.example      # bucket 名のサンプル（複製して backend.hcl にする）
-│   ├── versions.tf              # プロバイダーとバージョン制約
-│   ├── variables.tf             # 設定値
-│   ├── network.tf               # VPC / サブネット / IGW / ルートテーブル
-│   ├── security_groups.tf       # セキュリティグループ
-│   ├── iam.tf                   # SSM 用 IAM ロール / インスタンスプロファイル
-│   ├── ec2.tf                   # EC2 インスタンス
-│   ├── outputs.tf               # 接続先 IP / インスタンス ID
-│   ├── user_data.sh.tftpl       # alp の自動インストール
-│   └── terraform.tfvars.example # 設定値のサンプル
+├── terraform/                   # 実 AWS（S3 backend）
+│   ├── .terraform.lock.hcl
+│   ├── backend.tf
+│   ├── backend.hcl.example
+│   ├── versions.tf
+│   ├── variables.tf
+│   ├── network.tf
+│   ├── security_groups.tf
+│   ├── iam.tf
+│   ├── ec2.tf
+│   ├── outputs.tf
+│   ├── user_data.sh.tftpl
+│   └── terraform.tfvars.example
 ├── docs/
-    ├── README.md                # 手順の入口（軽量 / 重工 / ローカル × 単一 / 複数）
-    ├── common/                  # 初動・計測・配布・言語切替・プロンプト
-    ├── lite/                    # 最短で立てて計測する
-    ├── heavy/                   # 当日手順フル
-    └── local/                   # AMI/EC2 相当を手元で（手順は未執筆）
+    ├── README.md                # 手順の入口
+    ├── 010_common/              # 初動・計測・配布・参照
+    └── 040_practice/            # 実 AWS の構築・分割と練習問題
 ```
 
-`terraform` コマンドは `terraform/` ディレクトリで実行します。  
-手順の入口は [docs/README.md](docs/README.md)。下の「使い方」は CloudShell からの構築で、[軽量・単一](docs/lite/single/README.md) に相当します。
+`terraform` は `terraform/` で実行します。  
+手順の入口は [docs/README.md](docs/README.md)。下の「使い方」は CloudShell からの構築で、[AWS](docs/040_practice/0010-env.md) に相当します。1 台は `webapp_instance_count = 1`、複数台は `3`。
 
 
 ## 手順書
@@ -223,8 +221,8 @@ aws ssm start-session --target $(terraform output -raw webapp_instance_id)
 
 手順は言語ごとに分けています。
 
-- [Go](docs/common/webapp-setup/go.md)
-- [Python](docs/common/webapp-setup/python.md)
+- [Go](docs/010_common/webapp-setup/go.md)
+- [Python](docs/010_common/webapp-setup/python.md)
 
 Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
@@ -291,9 +289,13 @@ state には、Terraform が作成した AWS リソースの ID が記録され�
 
 | 期間 | 対応 |
 | --- | --- |
-| 手順の入口 | [docs/README.md](docs/README.md) |
-| 練習用 EC2 を立てる・止める（1 台） | [docs/heavy/single/00100-env.md](docs/heavy/single/00100-env.md) |
-| 練習用 EC2 を立てる・止める（複数台） | [docs/heavy/multi/00100-env.md](docs/heavy/multi/00100-env.md) |
+| 数日から数週間 | インスタンスを停止します。EBS の料金のみ発生します |
+| 1ヶ月以上 | `terraform destroy` で削除します。state に何も残らない状態にしておくと安全です |
+
+なお、CloudShell のセッションが切れても state は消えません。  
+消えるのは前述の120日経過と、自身で削除した場合だけです。
+
+手順の入口は [docs/README.md](docs/README.md)。実 AWS は [docs/040_practice/0010-env.md](docs/040_practice/0010-env.md)（1 台は `webapp_instance_count = 1`、複数台は `3`）。
 
 ## 参考
 

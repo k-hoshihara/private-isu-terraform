@@ -1,4 +1,4 @@
-# 初動
+# 0010 初動
 
 サーバ上、または `ssh s1` した先で打つ。値は `config.env` にメモしてから使う。
 
@@ -188,7 +188,7 @@ ssh "isucon@$HOST" "sudo tar czf - -C / home/isucon/webapp" | tar xzf - -C ~/fro
 ssh "isucon@$HOST" "sudo tar czf - -C / etc/nginx" | tar xzf - -C ~/from-server/nginx --strip-components=2
 ```
 
-配り方は [00400-ops.md](00400-ops.md#アプリを-1-台へ配る)。
+配り方は [0030-ops.md](0030-ops.md#アプリを-1-台へ配る)。
 
 ## 備考
 

@@ -1,7 +1,7 @@
-# 計測
+# 0020 計測
 
-alp → slp。DB が抜けてから py-spy。配布は [00400-ops.md](00400-ops.md)。  
-1 台で順に手を動かすドリルは [00600-practice.md](../heavy/single/00600-practice.md)。
+alp → slp。DB が抜けてから py-spy。配布は [0030-ops.md](0030-ops.md)。  
+1 台で順に手を動かすドリルは [../040_practice/0030-measure.md](../040_practice/0030-measure.md)。
 
 ## 1 サイクル
 
@@ -25,7 +25,7 @@ DB がまだ重い（スローが多い、CPU が mysqld）うちは alp と slp
 
 ## ベンチ直前
 
-理由と複数台の回し方は [00700-reference.md](00700-reference.md#ログを切る)。  
+理由と複数台の回し方は [0040-reference.md](0040-reference.md#ログを切る)。  
 MySQL slow は `truncate` しない（先頭が NUL のスパースファイルになる）。
 
 nginx（app 台。推奨は mv + reopen）:
@@ -170,4 +170,4 @@ ls -l /var/log/mysql/mysql-slow.log
 
 ### py-spy が Permission denied
 
-`/proc/sys/kernel/yama/ptrace_scope` が 0 か。[00200-setup.md](00200-setup.md#権限py-spy--ulimit) を入れたあと、取り直す。
+`/proc/sys/kernel/yama/ptrace_scope` が 0 か。[0010-setup.md](0010-setup.md#権限py-spy--ulimit) を入れたあと、取り直す。

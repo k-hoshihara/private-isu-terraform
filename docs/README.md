@@ -1,19 +1,16 @@
 # 手順書
 
-番号付きの一本道ではない。先にフレーバーを選び、台数を選ぶ。
+環境を選んで、そのフォルダの **番号順** に読む。番号は 10 刻み（0010, 0020, 0030, …）なので間に差し込める。
 
-| | 単一サーバ | 複数サーバ |
-| --- | --- | --- |
-| **軽量** | [lite/single](lite/single/README.md) | [lite/multi](lite/multi/README.md) |
-| **重工** | [heavy/single](heavy/single/README.md) | [heavy/multi](heavy/multi/README.md) |
-| **ローカル** | [local/single](local/single/README.md) | [local/multi](local/multi/README.md) |
-
-言語切替・初動・計測・配布・プロンプトは [common/](common/README.md)。
+| フォルダ | 内容 |
+| --- | --- |
+| [010_common/](010_common/README.md) | 言語切替・初動・計測・配布・参照。台数によらない |
+| [040_practice/](040_practice/README.md) | 実 AWS の構築・分割と練習問題 |
 
 ## どれを開くか
 
-- **軽量** — AWS で立てて、計測サイクルをすぐ回す。当日の 3 人タイムラインや終盤チェックは書かない。
-- **重工** — 競技当日の手順をフルで練習する。既存の番号付き Markdown はここ。
-- **ローカル** — AWS を使わず、AMI / EC2 相当を手元で再現する。公式の docker-compose（アプリ開発用）ではない。手順は未執筆。
+- **AWS 1 台** — [040_practice/0010-env.md](040_practice/0010-env.md) で `webapp_instance_count = 1` → [010_common/0010-setup.md](010_common/0010-setup.md) → [040_practice/0030-measure.md](040_practice/0030-measure.md)
+- **AWS 複数台** — 同じ [040_practice/0010-env.md](040_practice/0010-env.md) で `webapp_instance_count = 3` → [040_practice/0020-split.md](040_practice/0020-split.md)
+- **練習問題** — 立てたあとに手を動かすドリル。[040_practice/](040_practice/README.md) に足していく
 
-Terraform の `webapp_instance_count` 既定は 3。1 台で立てるときは手順側で `1` を書く。
+`terraform/` の `webapp_instance_count` 既定は 3。1 台にするときは手順側で `1` を書く。

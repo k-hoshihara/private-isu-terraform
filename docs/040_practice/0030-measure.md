@@ -1,14 +1,14 @@
-# 1台ドリル
+# 0030 1台ドリル
 
 環境構築のあと、同じ EC2 で計測サイクルを手で回す。  
-00200 のやり直しではない。Python 切替済み、ツールは [00200-setup.md](../../common/00200-setup.md) を起点にする。
+[0010-env.md](0010-env.md) のやり直しではない。Python 切替済み、ツールは [0010-setup.md](../010_common/0010-setup.md) を起点にする。
 
 前提:
 
 - EC2 は 1 台。ベンチも同じホストから `http://localhost`
-- 実装は [webapp-setup/python.md](../../common/webapp-setup/python.md)（`isu-python.service`）
-- サイクルの見方は [00300-measure.md](../../common/00300-measure.md)
-- 終盤のログ停止は [00400-ops.md](../../common/00400-ops.md#ログを止める終盤)。ここでは複製しない
+- 実装は [webapp-setup/python.md](../010_common/webapp-setup/python.md)（`isu-python.service`）
+- サイクルの見方は [0020-measure.md](../010_common/0020-measure.md)
+- 終盤のログ停止は [0030-ops.md](../010_common/0030-ops.md#ログを止める終盤)。ここでは複製しない
 
 順番: ベースライン → 観測ツール → ノブ 1 つ → EXPLAIN → py-spy → 詰まったとき。
 
@@ -76,9 +76,9 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=baseline" >> ~/bench-notes/s
 
 ## 2. 観測ツール
 
-導入そのものは [00200-setup.md](../../common/00200-setup.md#計測ツール)。入っていなければそこのブロックを打つ。ここでは確認と、このドリルでの使い方。
+導入そのものは [0010-setup.md](../010_common/0010-setup.md#計測ツール)。入っていなければそこのブロックを打つ。ここでは確認と、このドリルでの使い方。
 
-バージョン: `config.env.example` の `ALP_VERSION` / `SLP_VERSION` / `OHA_VERSION` は `latest`。00200 のコピー用ブロックは alp `1.0.21` / slp `0.2.1` / oha `1.12.1`。py-spy は pip（ピン無し）。
+バージョン: `config.env.example` の `ALP_VERSION` / `SLP_VERSION` / `OHA_VERSION` は `latest`。0010 のコピー用ブロックは alp `1.0.21` / slp `0.2.1` / oha `1.12.1`。py-spy は pip（ピン無し）。
 
 ```bash
 command -v alp slp oha py-spy mysql mysqladmin
@@ -91,7 +91,7 @@ alp --version; slp --version; py-spy --version; mysql --version
 command -v py-spy >/dev/null || sudo python3 -m pip install py-spy
 ```
 
-ptrace は [00200-setup.md](../../common/00200-setup.md#権限py-spy--ulimit) と `etc/sysctl/99-isucon-ptrace.conf`。取れないときは [6.](#6-トラブルシュート)。
+ptrace は [0010-setup.md](../010_common/0010-setup.md#権限py-spy--ulimit) と `etc/sysctl/99-isucon-ptrace.conf`。取れないときは [6.](#6-トラブルシュート)。
 
 ### mysql クライアントと env.sh
 
@@ -119,7 +119,7 @@ sudo mysql -e 'SELECT @@version, @@slow_query_log, @@slow_query_log_file, @@long
 
 ### スロークエリ: ON、`long_query_time` は段階的に
 
-永続化の drop-in は [00200-setup.md](../../common/00200-setup.md#ログnginx-ltsv--mysql-slow)。ドリルではまず今の値を見て、**最初から 0 で放置しない**。
+永続化の drop-in は [0010-setup.md](../010_common/0010-setup.md#ログnginx-ltsv--mysql-slow)。ドリルではまず今の値を見て、**最初から 0 で放置しない**。
 
 ```bash
 sudo mysql -e "SET GLOBAL slow_query_log = 1"
@@ -144,7 +144,7 @@ sudo mysql -e "SET GLOBAL long_query_time = 1"
 df -h /
 ```
 
-`SET GLOBAL` は再起動で消える。残すなら 00200 の drop-in。終盤に止めるなら 00400。
+`SET GLOBAL` は再起動で消える。残すなら 0010 の drop-in。終盤に止めるなら 0030。
 
 ### EXPLAIN（まだインデックスは貼らない）
 
@@ -167,11 +167,11 @@ FROM posts WHERE user_id = 1 ORDER BY created_at DESC LIMIT 20;
 
 `EXPLAIN ANALYZE` は実際に走る。`SELECT * FROM posts` は `imgdata`（MEDIUMBLOB）を含むので、ドリルの例では一覧用の列だけにする。
 
-見方は [00300-measure.md](../../common/00300-measure.md#インデックス): `type` は `ref` / `range` が欲しい。`ALL` はフルスキャン。`key` が `NULL` なら使っていない。
+見方は [0020-measure.md](../010_common/0020-measure.md#インデックス): `type` は `ref` / `range` が欲しい。`ALL` はフルスキャン。`key` が `NULL` なら使っていない。
 
-### alp / slp（導入は 00200）
+### alp / slp（導入は 0010）
 
-マッチャは `etc/alp/matching_groups.json`。[00300-measure.md](../../common/00300-measure.md#alp) と同じ。
+マッチャは `etc/alp/matching_groups.json`。[0020-measure.md](../010_common/0020-measure.md#alp) と同じ。
 
 ```bash
 MATCH='/posts/[0-9]+,/image/[0-9]+,/@[a-zA-Z0-9_]+'
@@ -191,7 +191,7 @@ sudo pt-query-digest /var/log/mysql/mysql-slow.log
 
 ## 3. 設定を 1 つ変えてスコアを動かす
 
-**1 ノブずつ。** 戻してから次へ。まとめて `my.cnf` を有効化しない。`innodb_buffer_pool_size` を最初のノブにしない（効かない・逆効果の報告がある。[00400-ops.md](../../common/00400-ops.md#nginx--mysql-の設定) と `etc/mysql/mysqld-isucon.cnf`）。
+**1 ノブずつ。** 戻してから次へ。まとめて `my.cnf` を有効化しない。`innodb_buffer_pool_size` を最初のノブにしない（効かない・逆効果の報告がある。[0030-ops.md](../010_common/0030-ops.md#nginx--mysql-の設定) と `etc/mysql/mysqld-isucon.cnf`）。
 
 回転 ≠ 停止。ISUCON13 優勝チームは終盤にログを止めておおよそ 27 万 → 46 万（277,310 → 468,006）。計測中の点数と終盤の点数は別物。
 
@@ -200,11 +200,11 @@ sudo pt-query-digest /var/log/mysql/mysql-slow.log
 | 変更 | ベンチ | 前 | 後 | 観察の目安 |
 | --- | --- | --- | --- | --- |
 | ベースライン（access_log ON / slow ON） | 公式 |  | — | 1. の原点 |
-| nginx `access_log` を止める | 同じ |  |  | alp が空。手順は [00400](../../common/00400-ops.md#ログを止める終盤) |
+| nginx `access_log` を止める | 同じ |  |  | alp が空。手順は [0030-ops](../010_common/0030-ops.md#ログを止める終盤) |
 | `SET GLOBAL slow_query_log=0` | 同じ |  |  | slp が空。`long_query_time=0` の書き込みコストが消える |
 | `innodb_flush_log_at_trx_commit=2` | 同じ |  |  | `mysqld-isucon.cnf` の 1 行だけ。バッファプールは触らない |
 
-nginx の止め方・戻し方は 00400（`access_log off` と `.logs-off.bak`）。こちらに sed を再掲しない。
+nginx の止め方・戻し方は 0030（`access_log off` と `.logs-off.bak`）。こちらに sed を再掲しない。
 
 slow のオフ（計測用。永続化しない）:
 
@@ -239,13 +239,13 @@ sudo systemctl restart mysql
 ### 観察すること
 
 - 変えたのが 1 つだけなら、点差はそのノブのコスト
-- access_log を止めたあと alp は空。計測に戻すなら 00400 の「戻す」
+- access_log を止めたあと alp は空。計測に戻すなら 0030 の「戻す」
 - slow を止めたあとファイルは増えない。`=0` のときのディスク増分がスコア差の本体になりやすい
 - 回転しただけでは点は動かない。止めて初めて動く
 
 ## 4. EXPLAIN からクエリを直す
 
-ルールは [00300-measure.md](../../common/00300-measure.md#インデックス): **1 本ずつ**。`examined >> sent` を優先。LLM に投げるなら [prompts/index-from-slp.md](../../common/prompts/index-from-slp.md)。
+ルールは [0020-measure.md](../010_common/0020-measure.md#インデックス): **1 本ずつ**。`examined >> sent` を優先。LLM に投げるなら [prompts/index-from-slp.md](../010_common/prompts/index-from-slp.md)。
 
 1. bench-prep → `long_query_time=0` → 公式ベンチ 1 本 → `long_query_time=1` に戻す  
 2. `slp` / `pt-query-digest` で 1 クエリだけ選ぶ  
@@ -285,13 +285,13 @@ SELECT * FROM comments WHERE post_id = 1 ORDER BY created_at DESC LIMIT 3;
 | slp の examined が sent の桁違い | 比が数倍以内。残るなら呼び出し回数（N+1） |
 
 効かなければ `DROP INDEX idx_comments_post_created ON comments`。次の 1 本へ。  
-`posts (user_id, created_at)` は 00300 の例。**同時に貼らない。**
+`posts (user_id, created_at)` は 0020 の例。**同時に貼らない。**
 
 ```bash
 echo "$(date -Iseconds)  score=  pass=  fail=  note=index comments(post_id,created_at)" >> ~/bench-notes/scores.txt
 ```
 
-再起動で初期化 SQL が DB を作り直す回は、終盤にもう一度 `SHOW INDEX`（[00400-ops.md](../../common/00400-ops.md#終盤チェック1700-以降)）。
+再起動で初期化 SQL が DB を作り直す回は、終盤にもう一度 `SHOW INDEX`（[0030-ops.md](../010_common/0030-ops.md#終盤チェック1700-以降)）。
 
 ### 観察すること
 
@@ -301,7 +301,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=index comments(post_id,creat
 
 ## 5. py-spy を取ってボトルネックを直す
 
-DB がまだ mysqld で飽和しているうちは alp / slp を先に見る（[00300-measure.md](../../common/00300-measure.md#1-サイクル)）。抜けてからアプリ。
+DB がまだ mysqld で飽和しているうちは alp / slp を先に見る（[0020-measure.md](../010_common/0020-measure.md#1-サイクル)）。抜けてからアプリ。
 
 値は `config.env.example` の `PYSPY_DURATION=30`、`PYSPY_FORMAT=speedscope`。
 
@@ -349,7 +349,7 @@ ls -lh /tmp/pyspy.json /tmp/pyspy-idle.json
 echo "$(date -Iseconds)  score=  pass=  fail=  note=pyspy-tune " >> ~/bench-notes/scores.txt
 ```
 
-終盤に py-spy を残さない（[00400-ops.md](../../common/00400-ops.md#ログを止める終盤)）。
+終盤に py-spy を残さない（[0030-ops.md](../010_common/0030-ops.md#ログを止める終盤)）。
 
 ### 観察すること
 
@@ -372,9 +372,9 @@ sudo ls -lh /var/log/mysql/mysql-slow.log*
 1. `long_query_time` を 1 以上に戻す、またはキャプチャを止める  
 2. bench-prep と同じ `mv` + `flush-logs`  
 3. 残った `mysql-slow.log.$TS` / `access.log.$TS` を消して空きを返す  
-4. 終盤ならログ自体を止める → [00400-ops.md](../../common/00400-ops.md#ログを止める終盤)
+4. 終盤ならログ自体を止める → [0030-ops.md](../010_common/0030-ops.md#ログを止める終盤)
 
-00400 のディスク節にある truncate は nginx には使えるが、slow log には使わない。
+0030 のディスク節にある truncate は nginx には使えるが、slow log には使わない。
 
 ### py-spy が Permission denied / ptrace
 
@@ -400,9 +400,9 @@ curl -v http://127.0.0.1:8080/
 curl -v -o /dev/null http://127.0.0.1/
 ```
 
-- Ruby が enabled に戻っている → [webapp-setup/python.md](../../common/webapp-setup/python.md)
+- Ruby が enabled に戻っている → [webapp-setup/python.md](../010_common/webapp-setup/python.md)
 - 依存 → `sudo su - isucon` して `cd /home/isucon/private_isu/webapp/python && uv sync` から restart
-- mysqld が 99-isucon*.cnf の直後に死んでいる → その drop-in を消して `systemctl restart mysql`（[00200-setup.md](../../common/00200-setup.md#mysqld-が起きないslow-設定の直後)）
+- mysqld が 99-isucon*.cnf の直後に死んでいる → その drop-in を消して `systemctl restart mysql`（[0010-setup.md](../010_common/0010-setup.md#mysqld-が起きないslow-設定の直後)）
 - nginx の `proxy_pass` と `APP_PORT`（8080）がずれていないか
 
 ### 観察すること

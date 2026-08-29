@@ -1,11 +1,11 @@
-# 複数台に分割する
+# 0020 複数台に分割する
 
-[00100-env.md](00100-env.md) で CloudShell / Terraform まで終わったあと。  
+[0010-env.md](0010-env.md) で `webapp_instance_count = 3` として立てたあと。  
 起動直後の AMI は各台がオールインワン（nginx + アプリ + MySQL）。この手順で役割を分け、余ったプロセスを止め、公式ベンチを nginx 役へ向ける。
 
-方針は [00100-env.md](00100-env.md) と同じ。コマンドは Markdown のブロックのまま残す。ラッパーの `.sh` は置かない。
+方針は [0010-env.md](0010-env.md) と同じ。コマンドは Markdown のブロックのまま残す。ラッパーの `.sh` は置かない。
 
-前提: Python 切替は済んでいること（[webapp-setup/python.md](../../common/webapp-setup/python.md) / [00200-setup.md](../../common/00200-setup.md)）。  
+前提: Python 切替は済んでいること（[webapp-setup/python.md](../010_common/webapp-setup/python.md) / [0010-setup.md](../010_common/0010-setup.md)）。  
 既定の練習は **3 台**。役割は入れ替えてよい。T 系は使わない（このリポジトリは `c7a.large`、`ap-northeast-1`）。
 
 ## 1. 台数と `config.env`
@@ -90,7 +90,7 @@ aws ssm start-session --target "$(terraform output -raw webapp_instance_id)"
 terraform output ssm_login_commands
 ```
 
-SSH を使うなら [00200-setup.md](../../common/00200-setup.md) の SSH 節。`enable_ssh = true` が必要。台間 rsync も同じ。
+SSH を使うなら [0010-setup.md](../010_common/0010-setup.md) の SSH 節。`enable_ssh = true` が必要。台間 rsync も同じ。
 
 ## 2. 各台で何が動いているか
 
@@ -132,7 +132,7 @@ s1 にアプリを残すなら `SERVER1_ROLE=web,app`。upstream は s2 だけ�
 
 ## 4. 余ったプロセスを止める
 
-`disable --now` にする。`stop` だけだと再起動で戻る（[python.md](../../common/webapp-setup/python.md)）。
+`disable --now` にする。`stop` だけだと再起動で戻る（[python.md](../010_common/webapp-setup/python.md)）。
 
 **全台**（Ruby ストック）:
 
@@ -422,7 +422,7 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/css/style.css || true
 
 公式ベンチの `-t` は **nginx 役**。分割後にアプリ台や DB 台の localhost へ向けない。
 
-AMI にはベンチマーカーが入っている。CPU を食い始めたら [00100-env.md](00100-env.md) のとおりベンチ専用インスタンスを分ける。
+AMI にはベンチマーカーが入っている。CPU を食い始めたら [0010-env.md](0010-env.md) のとおりベンチ専用インスタンスを分ける。
 
 ```bash
 # nginx 役、またはベンチ専用機。NGINX_URL は s1 の URL（同じホストなら http://localhost）
@@ -435,7 +435,7 @@ sudo su - isucon
 
 ### bench-prep
 
-コピーして値を直す。ログを空にしてから公式ベンチ。計測の中身は [00300-measure.md](../../common/00300-measure.md)。
+コピーして値を直す。ログを空にしてから公式ベンチ。計測の中身は [0020-measure.md](../010_common/0020-measure.md)。
 
 ```bash
 # bench-prep

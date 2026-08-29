@@ -1,9 +1,9 @@
-# 参照
+# 0040 参照
 
-ログの切り方、台数、レギュレーション寄りの約束。手順の本体は [00200-setup.md](00200-setup.md) / [00300-measure.md](00300-measure.md) / [00400-ops.md](00400-ops.md)。  
-後続のドリル（00500 / 00600）からもここにリンクする。
+ログの切り方、台数、レギュレーション寄りの約束。手順の本体は [0010-setup.md](0010-setup.md) / [0020-measure.md](0020-measure.md) / [0030-ops.md](0030-ops.md)。  
+役割分割（[040_practice/0020-split.md](../040_practice/0020-split.md)）や計測ドリル（[040_practice/0030-measure.md](../040_practice/0030-measure.md)）からもここにリンクする。
 
-当日の値は [config.env.example](../config.env.example) を `config.env` に複製して埋める。
+当日の値は [config.env.example](../../config.env.example) を `config.env` に複製して埋める。
 
 ## ログを切る
 
@@ -12,7 +12,7 @@
 ISUCON は logrotate に任せない。時間ベースなのでベンチの窓を外す。  
 計測の直前に自分で切る。
 
-切ることと、終盤にログを止めることは別。止める手順は [00400-ops.md](00400-ops.md#ログを止める終盤)。
+切ることと、終盤にログを止めることは別。止める手順は [0030-ops.md](0030-ops.md#ログを止める終盤)。
 
 ### nginx
 
@@ -41,7 +41,7 @@ sudo nginx -s reopen
 nginx と同じ `truncate` は使わない。mysqld は `O_APPEND` ではなくオフセットを持つ。  
 `truncate` するとその位置へ書くので、先頭が NUL のスパースファイルになる。`ls` は大きい、`du` は小さい、slp は壊れる。
 
-一般的な例は `/var/log/mysql/slow.log`。このリポジトリの例（[config.env.example](../config.env.example) の `MYSQL_SLOW_LOG`）は `/var/log/mysql/mysql-slow.log`。当日のパスに直す。
+一般的な例は `/var/log/mysql/slow.log`。このリポジトリの例（[config.env.example](../../config.env.example) の `MYSQL_SLOW_LOG`）は `/var/log/mysql/mysql-slow.log`。当日のパスに直す。
 
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
@@ -77,7 +77,7 @@ df -h /
 
 `long_query_time=0` は全クエリを書く。数本で GB になる。切るたびに `df -h /` を見る。ディスクフルは毎年出る。
 
-nginx だけなら A の `truncate` でも空にできる。slow には使わない。計測サイクル側は [00300-measure.md](00300-measure.md#ベンチ直前)。
+nginx だけなら A の `truncate` でも空にできる。slow には使わない。計測サイクル側は [0020-measure.md](0020-measure.md#ベンチ直前)。
 
 ### 複数台は SERVER* を回す
 
@@ -154,7 +154,7 @@ db_exec "sudo mv ${MYSQL_SLOW_LOG} ${MYSQL_SLOW_LOG}.${TS} && sudo mysqladmin fl
 ### ディスク
 
 切ったあと、古い回転ログを消して空きを作る。今のランのファイルは残す。  
-目安は `DISK_WARN_PERCENT`（[config.env.example](../config.env.example)）。超えたら [00400-ops.md](00400-ops.md#ディスク)。
+目安は `DISK_WARN_PERCENT`（[config.env.example](../../config.env.example)）。超えたら [0030-ops.md](0030-ops.md#ディスク)。
 
 ```bash
 df -h /
@@ -174,7 +174,7 @@ access_log off;
 SET GLOBAL slow_query_log = 'OFF';
 ```
 
-手順と戻しは [00400-ops.md](00400-ops.md#ログを止める終盤)。py-spy も止める。
+手順と戻しは [0030-ops.md](0030-ops.md#ログを止める終盤)。py-spy も止める。
 
 ## 台数
 
@@ -196,7 +196,7 @@ SET GLOBAL slow_query_log = 'OFF';
 ISUCON14 / ISUCON2026 で形が同じ約束。
 
 1. サーバの役割は変えてよい（DB 分離、app 分離）。
-2. 運営の再起動順は保証されない。起動時に DB が落ちていても app が死なないこと。接続はリトライする。再起動試験は [00400-ops.md](00400-ops.md#再起動試験)。
+2. 運営の再起動順は保証されない。起動時に DB が落ちていても app が死なないこと。接続はリトライする。再起動試験は [0030-ops.md](0030-ops.md#再起動試験)。
 3. ベンチ中に書いたデータは再起動後も読めること。ISUCON14 ではメモリ上のキャッシュが原因で上位（トップ 8）のチームが失格になった。メモリキャッシュや遅延書き込みで、この線を越えない。
 
 ## ISUCON2026
@@ -214,9 +214,9 @@ ISUCON14 / ISUCON2026 で形が同じ約束。
 
 ## このリポジトリ
 
-練習は自分の AWS で、指定 AMI を `ap-northeast-1` に立てる。インスタンスは `c7a.large`（T 系は使わない）。構築は [00100-env.md](00100-env.md)。
+練習は自分の AWS で、指定 AMI を `ap-northeast-1` に立てる。インスタンスは `c7a.large`（T 系は使わない）。構築は [040_practice/0010-env.md](../040_practice/0010-env.md)。1 台は `webapp_instance_count = 1`、複数台は `3`。
 
-[config.env.example](../config.env.example) で当日変えるもの:
+[config.env.example](../../config.env.example) で当日変えるもの:
 
 - `SERVER*_NAME` / `SERVER*_IP` / `SERVER*_ROLE`（空の IP は無視）
 - `NGINX_ACCESS_LOG` / `MYSQL_SLOW_LOG`
