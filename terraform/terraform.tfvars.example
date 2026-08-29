@@ -3,7 +3,9 @@
 # 自身のグローバル IP を /32 で指定する。確認: curl -s https://checkip.amazonaws.com
 allowed_cidrs = ["203.0.113.1/32"]
 
-# 3 章の範囲では変更不要
+# 競技者インスタンス。既定 3 台（役割は Terraform では固定しない）。
+# 1 台に戻すなら webapp_instance_count = 1
+webapp_instance_count       = 3
 webapp_instance_type        = "c7a.large"
 enable_benchmarker_instance = false
 
