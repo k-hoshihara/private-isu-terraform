@@ -49,7 +49,7 @@ variable "webapp_instance_count" {
   description = <<-EOT
     競技者用インスタンスの台数。既定は 3（ISUCON 本番に近い複数台練習）。
     1 台にすると AMI のオールインワンのまま localhost ベンチできる。
-    役割の割り当ては Terraform では固定せず、docs/00500-multi-server.md で入れ替える。
+    役割の割り当ては Terraform では固定せず、docs/heavy/multi/00500-multi-server.md で入れ替える。
   EOT
   type        = number
   default     = 3

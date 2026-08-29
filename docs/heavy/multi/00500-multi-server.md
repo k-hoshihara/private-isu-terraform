@@ -5,7 +5,7 @@
 
 方針は [00100-env.md](00100-env.md) と同じ。コマンドは Markdown のブロックのまま残す。ラッパーの `.sh` は置かない。
 
-前提: Python 切替は済んでいること（[webapp-setup/python.md](webapp-setup/python.md) / [00200-setup.md](00200-setup.md)）。  
+前提: Python 切替は済んでいること（[webapp-setup/python.md](../../common/webapp-setup/python.md) / [00200-setup.md](../../common/00200-setup.md)）。  
 既定の練習は **3 台**。役割は入れ替えてよい。T 系は使わない（このリポジトリは `c7a.large`、`ap-northeast-1`）。
 
 ## 1. 台数と `config.env`
@@ -90,7 +90,7 @@ aws ssm start-session --target "$(terraform output -raw webapp_instance_id)"
 terraform output ssm_login_commands
 ```
 
-SSH を使うなら [00200-setup.md](00200-setup.md) の SSH 節。`enable_ssh = true` が必要。台間 rsync も同じ。
+SSH を使うなら [00200-setup.md](../../common/00200-setup.md) の SSH 節。`enable_ssh = true` が必要。台間 rsync も同じ。
 
 ## 2. 各台で何が動いているか
 
@@ -132,7 +132,7 @@ s1 にアプリを残すなら `SERVER1_ROLE=web,app`。upstream は s2 だけ�
 
 ## 4. 余ったプロセスを止める
 
-`disable --now` にする。`stop` だけだと再起動で戻る（[python.md](webapp-setup/python.md)）。
+`disable --now` にする。`stop` だけだと再起動で戻る（[python.md](../../common/webapp-setup/python.md)）。
 
 **全台**（Ruby ストック）:
 
@@ -435,7 +435,7 @@ sudo su - isucon
 
 ### bench-prep
 
-コピーして値を直す。ログを空にしてから公式ベンチ。計測の中身は [00300-measure.md](00300-measure.md)。
+コピーして値を直す。ログを空にしてから公式ベンチ。計測の中身は [00300-measure.md](../../common/00300-measure.md)。
 
 ```bash
 # bench-prep

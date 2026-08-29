@@ -1,6 +1,6 @@
 # 1 項目ずつコメントを外して計測する。まとめて有効化しないこと。
 # innodb_buffer_pool_size は効かない・逆効果の報告がある。
-# 適用は scripts にしない。1 項目ずつ外してから docs/00400-ops.md の scp 例で配る。
+# 適用は scripts にしない。1 項目ずつ外してから docs/common/00400-ops.md の scp 例で配る。
 
 [mysqld]
 # --- slow query（setup-logs.sh でも入れる。終盤は logs-off で止める） ---

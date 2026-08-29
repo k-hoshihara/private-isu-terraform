@@ -1,6 +1,7 @@
 # 計測
 
-alp → slp。DB が抜けてから py-spy。配布は [00400-ops.md](00400-ops.md)。
+alp → slp。DB が抜けてから py-spy。配布は [00400-ops.md](00400-ops.md)。  
+1 台で順に手を動かすドリルは [00600-practice.md](../heavy/single/00600-practice.md)。
 
 ## 1 サイクル
 

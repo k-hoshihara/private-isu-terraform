@@ -14,7 +14,7 @@
 - 既存インデックスと重複するものは提案しない
 - 最後に、人間が mysql で打てる `CREATE INDEX ...` だけを列挙する（存在確認の `SELECT COUNT(*)` も添える）
 - MySQL 8 前提。`CREATE INDEX IF NOT EXISTS` は使わない
-- ここから DB を変更しない。適用手順は docs/00300-measure.md の「インデックス」
+- ここから DB を変更しない。適用手順は docs/common/00300-measure.md の「インデックス」
 - テーブル定義に無い列は作らない
 
 テーブル定義も併せて渡します。

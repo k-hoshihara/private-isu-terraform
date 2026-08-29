@@ -3,7 +3,7 @@
     "alp の -m に渡す正規化パターン。当日、ルーティング定義を見て groups を埋める。",
     "数字や UUID、ユーザー名など可変部分を正規表現でまとめる。",
     "書き方: 左から順にマッチ。具体的なパスほど上に置く。",
-    "本番中の生成プロンプト: docs/prompts/alp-matchers.md",
+    "本番中の生成プロンプト: docs/common/prompts/alp-matchers.md",
     "private-isu の例は groups をアンコメントして使う。"
   ],
   "groups": [

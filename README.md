@@ -63,16 +63,15 @@ private-isu-terraform/
 │   ├── user_data.sh.tftpl       # alp の自動インストール
 │   └── terraform.tfvars.example # 設定値のサンプル
 ├── docs/
-    ├── README.md
-    ├── 00100-env.md             # 練習環境の構築
-    ├── 00200-setup.md           # 初動
-    ├── 00300-measure.md         # 計測・インデックス
-    ├── 00400-ops.md             # 配布・終盤
-    ├── prompts/
-    └── webapp-setup/
+    ├── README.md                # 手順の入口（軽量 / 重工 / ローカル × 単一 / 複数）
+    ├── common/                  # 初動・計測・配布・言語切替・プロンプト
+    ├── lite/                    # 最短で立てて計測する
+    ├── heavy/                   # 当日手順フル
+    └── local/                   # AMI/EC2 相当を手元で（手順は未執筆）
 ```
 
-`terraform` コマンドは `terraform/` ディレクトリで実行します。
+`terraform` コマンドは `terraform/` ディレクトリで実行します。  
+手順の入口は [docs/README.md](docs/README.md)。下の「使い方」は CloudShell からの構築で、[軽量・単一](docs/lite/single/README.md) に相当します。
 
 
 ## 手順書
@@ -224,8 +223,8 @@ aws ssm start-session --target $(terraform output -raw webapp_instance_id)
 
 手順は言語ごとに分けています。
 
-- [Go](docs/webapp-setup/go.md)
-- [Python](docs/webapp-setup/python.md)
+- [Go](docs/common/webapp-setup/go.md)
+- [Python](docs/common/webapp-setup/python.md)
 
 Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
@@ -292,8 +291,9 @@ state には、Terraform が作成した AWS リソースの ID が記録され�
 
 | 期間 | 対応 |
 | --- | --- |
-| 練習用 EC2 を立てる・止める | [docs/00100-env.md](docs/00100-env.md) |
-| 競技当日 | [docs/README.md](docs/README.md) |
+| 手順の入口 | [docs/README.md](docs/README.md) |
+| 練習用 EC2 を立てる・止める（1 台） | [docs/heavy/single/00100-env.md](docs/heavy/single/00100-env.md) |
+| 練習用 EC2 を立てる・止める（複数台） | [docs/heavy/multi/00100-env.md](docs/heavy/multi/00100-env.md) |
 
 ## 参考
 
