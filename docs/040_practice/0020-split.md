@@ -124,31 +124,36 @@ find "$BK" -maxdepth 2 -ls
 
 `$BK` を丸ごと push しない。`sudo cp -r /etc` には `/etc/shadow`、`/etc/ssh/ssh_host_*_key`、`/etc/sudoers.d` が入る。private リポジトリでも鍵とパスワードハッシュは置かない。**必要な設定だけを allowlist で拾う**。
 
-例では `k-hoshihara/isucon2026` を使う。自分のリポジトリに読み替える。**private であることを先に確認する**（`env.sh` に DB 認証情報が入る）。
+例では `k-hoshihara/isucon2026` を使う。自分のリポジトリに読み替える。**private であることを先に確認する**（`env.sh` に DB 認証情報が入る）。`gh` 無しで見られる。
 
 ```bash
-gh repo view k-hoshihara/isucon2026 --json visibility
+curl -s -o /dev/null -w '%{http_code}\n' https://github.com/k-hoshihara/isucon2026
+# 404 = private（または未作成）、200 = public
 ```
+
+200 なら push の前に Settings → General → Danger Zone で private にする。
 
 #### 認証（各台で 1 回）
 
-```bash
-command -v gh
-```
+AMI に `gh` は入っていない。入れるか、PAT を使うかの 2 通り。
 
-`gh` があるとき。手元のブラウザにコードを入れるだけで通る。
+**A. `gh` を入れる。** 手元のブラウザにコードを入れるだけで通る。PAT を作らずに済む。
 
 ```bash
-gh auth login        # GitHub.com → HTTPS → device code
+sudo apt-get update -y && sudo apt-get install -y gh
+gh auth login        # GitHub.com → HTTPS → Y（git の認証にも使う）→ device code
 gh auth setup-git
 ```
 
-無いとき。fine-grained PAT（Contents: Read and write）を作り、credential helper に覚えさせる。
+`gh auth login` は URL と 8 桁のコードを出して待つ。手元のブラウザで <https://github.com/login/device> を開いてコードを入れる。SSM セッションのまま通る。
+
+**B. `gh` を入れない。** fine-grained PAT（対象リポジトリに Contents: Read and write）を作り、credential helper に覚えさせる。
 
 ```bash
 git config --global credential.helper store
 git clone https://github.com/k-hoshihara/isucon2026.git /home/isucon/isucon2026
-# Username: <GitHub ユーザー名> / Password: <PAT>
+# Username: <GitHub ユーザー名>
+# Password: <PAT>   ← トークン。GitHub のパスワードではない
 ```
 
 PAT は `~/.git-credentials` に平文で残る。捨てるインスタンスなので競技中は許容する。終わったら revoke する。
