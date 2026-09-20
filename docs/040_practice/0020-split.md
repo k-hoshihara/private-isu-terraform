@@ -94,7 +94,7 @@ Flask + gunicorn は `8080`、unit は `isu-python.service`。nginx が前段。
 サーバ操作（次の Python 切替（[4.](#4-python-に切り替える全台)）を含む）を始める前に取る。これ以降で `/etc`・`env.sh`・gunicorn の bind を変える。**変える前に取る**。ローカルの orig と、GitHub の private リポジトリの 2 系統。
 
 - **Linux の設定** — 各台で `~/kit-backup/` に `/etc/nginx` `/etc/mysql` `/etc/memcached.conf` systemd unit / drop-in、`env.sh` をコピーする。壊したらこのディレクトリから戻す。
-- **アプリのファイル** — `webapp/`（`.venv` は除く）を GitHub の **private** リポジトリへ push する。設定のコピーも同じリポジトリの `configs/<台名>/` に載せる。インスタンスを捨てても GitHub から戻せる。
+- **アプリのファイル** — `webapp/`（`.venv` は除く）を GitHub の **private** リポジトリへ push する。設定のコピーも同じリポジトリの `<台名>/` に載せる。インスタンスを捨てても GitHub から戻せる。
 
 public リポジトリにしない。`env.sh` と投稿データが入りうる。AMI のストックは残るが、自分の差分は残らない。
 
@@ -107,9 +107,9 @@ TS=$(date +%Y%m%d%H%M%S)
 BK=/home/isucon/kit-backup/$TS
 mkdir -p "$BK"
 
-# home directoryの内容をバックアップコピー
+# home directoryの内容をバックアップコピー。$BK の下に置く
 cp -r $HOME /tmp/home_bk
-mv /tmp/home_bk $HOME
+mv /tmp/home_bk "$BK/"
 
 # 設定ファイルを全量避難させる
 sudo cp -r /etc "$BK/"
@@ -122,7 +122,100 @@ find "$BK" -maxdepth 2 -ls
 
 ### GitHub へ（アプリ + 設定）
 
-$BK の内容をGitHubにPushしてバックアップを退避させる
+`$BK` を丸ごと push しない。`sudo cp -r /etc` には `/etc/shadow`、`/etc/ssh/ssh_host_*_key`、`/etc/sudoers.d` が入る。private リポジトリでも鍵とパスワードハッシュは置かない。**必要な設定だけを allowlist で拾う**。
+
+例では `k-hoshihara/isucon2026` を使う。自分のリポジトリに読み替える。**private であることを先に確認する**（`env.sh` に DB 認証情報が入る）。
+
+```bash
+gh repo view k-hoshihara/isucon2026 --json visibility
+```
+
+#### 認証（各台で 1 回）
+
+```bash
+command -v gh
+```
+
+`gh` があるとき。手元のブラウザにコードを入れるだけで通る。
+
+```bash
+gh auth login        # GitHub.com → HTTPS → device code
+gh auth setup-git
+```
+
+無いとき。fine-grained PAT（Contents: Read and write）を作り、credential helper に覚えさせる。
+
+```bash
+git config --global credential.helper store
+git clone https://github.com/k-hoshihara/isucon2026.git /home/isucon/isucon2026
+# Username: <GitHub ユーザー名> / Password: <PAT>
+```
+
+PAT は `~/.git-credentials` に平文で残る。捨てるインスタンスなので競技中は許容する。終わったら revoke する。
+
+#### リポジトリに取り込む（各台）
+
+`HOST` を台ごとに変える。`TS` は `~/kit-backup` の下のディレクトリ名（`ls /home/isucon/kit-backup` で見る）。
+
+```bash
+TS=<kit-backup の下のディレクトリ名>
+BK=/home/isucon/kit-backup/$TS
+REPO=/home/isucon/isucon2026
+HOST=s1   # 台ごとに s1 / s2 / s3
+
+[ -d "$REPO/.git" ] || git clone https://github.com/k-hoshihara/isucon2026.git "$REPO"
+
+# sudo cp で作ったので root 所有。isucon から読めるようにする
+sudo chown -R isucon:isucon "$BK"
+
+D="$REPO/$HOST"
+mkdir -p "$D/etc" "$D/home"
+
+# /etc は必要なものだけ拾う。shadow / ssh host key / sudoers は入れない
+for p in nginx mysql memcached.conf sysctl.d systemd/system security/limits.conf; do
+  src="$BK/etc/$p"
+  [ -e "$src" ] || continue
+  mkdir -p "$D/etc/$(dirname "$p")"
+  rm -rf "$D/etc/$p"
+  cp -a "$src" "$D/etc/$p"
+done
+
+# アプリと env.sh。.venv と .git は除く
+rsync -a --delete --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
+  "$BK/home_bk/private_isu/" "$D/home/private_isu/"
+cp -a "$BK/home_bk/env.sh" "$D/home/env.sh"
+
+du -sh "$D"
+find "$D" -type f -size +50M   # 出たら push 前に外す。GitHub は 100MB 超を拒否する
+```
+
+`go/`・`backup/`・`kit-backup/` は入れない。ビルド成果物とバックアップの入れ子で膨らむだけ。要るものが他にあれば個別に足す。
+
+#### push
+
+```bash
+cd "$REPO"
+git config user.name  "<GitHub ユーザー名>"
+git config user.email "<GitHub に登録したメールアドレス>"
+
+git add -A
+git commit -m "$HOST: 分割前ベースライン ($TS)"
+git pull --rebase origin main   # 他の台が先に push していることがある
+git push -u origin main
+```
+
+3 台が同じリポジトリに push する。順番にやるか、毎回 `git pull --rebase` を挟む。`$HOST` でディレクトリが分かれるので中身は衝突しない。
+
+空のリポジトリを作った直後で `clone` できないときだけ、`$REPO` で `git init -b main` と `git remote add origin <URL>` を先に打つ。
+
+#### 戻す
+
+```bash
+sudo cp -a /home/isucon/isucon2026/s1/etc/nginx /etc/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`~/kit-backup/` が生きていればそちらが速い。GitHub 側はインスタンスを捨てた後の保険。
 
 ## 4. Python に切り替える（全台）
 
