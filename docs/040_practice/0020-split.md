@@ -47,9 +47,7 @@ IP はマネジメントコンソール（GUI）で確認する。手順：
 s1 に入って素振りのベンチを 1 本回す（動作確認用）:
 
 ```bash
-# s1 の Session Manager シェルで実行
-sudo su - isucon
-
+# s1 で実行する。Session Manager で入った直後なら、先に sudo su - isucon だけを単独で実行する
 /home/isucon/private_isu/benchmarker/bin/benchmarker \
   -u /home/isucon/private_isu/benchmarker/userdata \
   -t http://localhost
@@ -296,7 +294,7 @@ Python 切替だけ済んだ状態で公式ベンチ 1 本実施し、あとの�
 s1 で下記を実行
 
 ```bash
-sudo su - isucon
+# isucon で打つ。Session Manager で入った直後なら、先に sudo su - isucon だけを単独で実行する
 /home/isucon/private_isu/benchmarker/bin/benchmarker \
   -u /home/isucon/private_isu/benchmarker/userdata \
   -t http://localhost
@@ -831,7 +829,7 @@ AMI にはベンチマーカーが入っている。CPU を食い始めたら [0
 ```bash
 # nginx 役、またはベンチ専用機。NGINX_URL は s1 の URL（同じホストなら http://localhost）
 NGINX_URL=http://10.42.0.10
-sudo su - isucon
+# isucon で打つ。Session Manager で入った直後なら、先に sudo su - isucon だけを単独で実行する
 /home/isucon/private_isu/benchmarker/bin/benchmarker \
   -u /home/isucon/private_isu/benchmarker/userdata \
   -t "$NGINX_URL"
