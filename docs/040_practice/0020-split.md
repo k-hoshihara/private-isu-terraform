@@ -180,7 +180,8 @@ done
 
 # アプリと env.sh。.venv と .git は除く
 # benchmarker/ は userdata だけで 1.2G ある。AMI の配布物で自分では書き換えないので入れない
-rsync -a --delete \
+# --delete だけでは除外したファイルは受信側に残る。除外を足して打ち直すときは --delete-excluded が要る
+rsync -a --delete --delete-excluded \
   --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
   --exclude 'benchmarker/' \
   "$BK/home_bk/private_isu/" "$D/home/private_isu/"
@@ -203,12 +204,15 @@ git config user.name  "<GitHub ユーザー名>"
 git config user.email "<GitHub に登録したメールアドレス>"
 
 git add -A
+git status --short | head       # <台名>/etc と <台名>/home が並ぶことを確認する
 git commit -m "$HOST: 分割前ベースライン ($TS)"
-git pull --rebase origin main   # 他の台が先に push していることがある
+git pull --rebase origin main   # 2 台目から。他の台が先に push している
 git push -u origin main
 ```
 
-3 台が同じリポジトリに push する。順番にやるか、毎回 `git pull --rebase` を挟む。`$HOST` でディレクトリが分かれるので中身は衝突しない。
+1 台目はリモートに何も無いので `pull` は `couldn't find remote ref main` で落ちる。飛ばして `push` してよい。`src refspec main does not match any` で落ちたら、空リポジトリの clone でブランチが未作成なので `git branch -M main` を挟む。
+
+3 台が同じリポジトリに push する。順番にやるか、2 台目からは毎回 `git pull --rebase` を挟む。`$HOST` でディレクトリが分かれるので中身は衝突しない。
 
 空のリポジトリを作った直後で `clone` できないときだけ、`$REPO` で `git init -b main` と `git remote add origin <URL>` を先に打つ。
 
