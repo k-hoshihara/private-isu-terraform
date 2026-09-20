@@ -135,28 +135,21 @@ curl -s -o /dev/null -w '%{http_code}\n' https://github.com/k-hoshihara/isucon20
 
 #### 認証（各台で 1 回）
 
-AMI に `gh` は入っていない。入れるか、PAT を使うかの 2 通り。
-
-**A. `gh` を入れる。** 手元のブラウザにコードを入れるだけで通る。PAT を作らずに済む。
+AMI に `gh` は入っていない。入れる。手元のブラウザにコードを入れるだけで通る。
 
 ```bash
 sudo apt-get update -y && sudo apt-get install -y gh
-gh auth login        # GitHub.com → HTTPS → Y（git の認証にも使う）→ device code
-gh auth setup-git
+gh auth login        # GitHub.com → HTTPS → Y（git の認証にも使う）→ Login with a web browser
 ```
 
-`gh auth login` は URL と 8 桁のコードを出して待つ。手元のブラウザで <https://github.com/login/device> を開いてコードを入れる。SSM セッションのまま通る。
+3 つ目の「Authenticate Git with your GitHub credentials?」は **Y**。`gh` が git の credential helper になり、`clone` / `push` でユーザー名とパスワードを聞かれなくなる（`gh auth setup-git` と同じ）。
 
-**B. `gh` を入れない。** fine-grained PAT（対象リポジトリに Contents: Read and write）を作り、credential helper に覚えさせる。
+8 桁のコードが出て Enter 待ちになる。ブラウザの起動には失敗するので、手元のブラウザで <https://github.com/login/device> を開いてコードを入れる。SSM セッションのまま通る。
 
 ```bash
-git config --global credential.helper store
-git clone https://github.com/k-hoshihara/isucon2026.git /home/isucon/isucon2026
-# Username: <GitHub ユーザー名>
-# Password: <PAT>   ← トークン。GitHub のパスワードではない
+gh auth status
+git config --get credential.https://github.com.helper   # !gh auth git-credential と出れば Y が効いている
 ```
-
-PAT は `~/.git-credentials` に平文で残る。捨てるインスタンスなので競技中は許容する。終わったら revoke する。
 
 #### リポジトリに取り込む（各台）
 
@@ -186,15 +179,21 @@ for p in nginx mysql memcached.conf sysctl.d systemd/system security/limits.conf
 done
 
 # アプリと env.sh。.venv と .git は除く
-rsync -a --delete --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
+# benchmarker/ は userdata だけで 1.2G ある。AMI の配布物で自分では書き換えないので入れない
+rsync -a --delete \
+  --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
+  --exclude 'benchmarker/' \
   "$BK/home_bk/private_isu/" "$D/home/private_isu/"
 cp -a "$BK/home_bk/env.sh" "$D/home/env.sh"
 
 du -sh "$D"
-find "$D" -type f -size +50M   # 出たら push 前に外す。GitHub は 100MB 超を拒否する
+
+# 重いものが紛れていないか push の前に見る。GitHub は 50MB 超で警告、100MB 超は push を拒否する
+find "$D" -type f -size +50M -printf '%s %p\n' | sort -rn | head
+du -sh "$D"/home/private_isu/* | sort -h | tail -10
 ```
 
-`go/`・`backup/`・`kit-backup/` は入れない。ビルド成果物とバックアップの入れ子で膨らむだけ。要るものが他にあれば個別に足す。
+`go/`・`backup/`・`kit-backup/` も入れない。ビルド成果物とバックアップの入れ子で膨らむだけ。除外が効いていれば `$D` は数十 MB に収まる。バックアップするのは**自分が書き換えるもの**（アプリのソース、`/etc` の設定、`env.sh`）だけで、配布物は対象外。ベンチマーカーの設定を自分で変えたときだけ、そのファイルを個別に足す（userdata は要らない）。
 
 #### push
 
