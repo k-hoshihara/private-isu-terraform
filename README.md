@@ -13,10 +13,11 @@
 
 | 項目 | 内容 |
 | --- | --- |
-| AWS アカウント | EC2・VPC・IAM ロールを作成できる権限が必要 |
+| AWS アカウント | EC2・VPC・IAM・S3（state 用バケット）を操作できる権限が必要 |
 | 作業環境 | AWS CloudShell（AWS CLI v2 と Git がインストール済み） |
-| Terraform | >= 1.9 |
+| Terraform | >= 1.10（S3 backend の `use_lockfile` に必要） |
 | リージョン | `ap-northeast-1`（AMI の公開リージョン） |
+| state の保存先 | S3（CloudShell のホームが消えても `terraform destroy` 可能） |
 
 > [!WARNING]
 > `c7a.large` は起動している間、課金が発生します。  
@@ -46,29 +47,32 @@
 
 ```
 private-isu-terraform/
-├── terraform/
-│   ├── .terraform.lock.hcl      # プロバイダーのバージョンを固定
-│   ├── versions.tf              # プロバイダーとバージョン制約
-│   ├── variables.tf             # 設定値
-│   ├── network.tf               # VPC / サブネット / IGW / ルートテーブル
-│   ├── security_groups.tf       # セキュリティグループ
-│   ├── iam.tf                   # SSM 用 IAM ロール / インスタンスプロファイル
-│   ├── ec2.tf                   # EC2 インスタンス
-│   ├── outputs.tf               # 接続先 IP / インスタンス ID
-│   ├── user_data.sh.tftpl       # alp の自動インストール
-│   └── terraform.tfvars.example # 設定値のサンプル
-└── docs/
-    └── webapp-setup/            # 言語実装ごとの切り替え手順
-        ├── go.md
-        └── python.md
+├── config.env.example           # 当日変数のメモ（ひな形）
+├── etc/                         # nginx / mysql / alp の設定テンプレ
+├── terraform/                   # 実 AWS（S3 backend）
+│   ├── .terraform.lock.hcl
+│   ├── backend.tf
+│   ├── backend.hcl.example
+│   ├── versions.tf
+│   ├── variables.tf
+│   ├── network.tf
+│   ├── security_groups.tf
+│   ├── iam.tf
+│   ├── ec2.tf
+│   ├── outputs.tf
+│   ├── user_data.sh.tftpl
+│   └── terraform.tfvars.example
+├── docs/
+    ├── README.md                # 手順の入口
+    ├── 010_common/              # 初動・計測・配布・参照
+    └── 040_practice/            # 実 AWS の構築・分割と練習問題
 ```
 
-`terraform` コマンドは `terraform/` ディレクトリで実行します。
+`terraform` は `terraform/` で実行します。  
+手順の入口は [docs/README.md](docs/README.md)。下の「使い方」は CloudShell からの構築で、[AWS](docs/040_practice/0010-env.md) に相当します。1 台は `webapp_instance_count = 1`、複数台は `3`。
 
-## AMI の最新版を確認する
 
-private-isu の README に記載された AMI ID は特定日時のスナップショットのため、より新しい AMI が公開されている場合があります。  
-CloudShell から確認できます。
+## 手順書
 
 ```bash
 aws ec2 describe-images --region ap-northeast-1 \
@@ -217,8 +221,8 @@ aws ssm start-session --target $(terraform output -raw webapp_instance_id)
 
 手順は言語ごとに分けています。
 
-- [Go](docs/webapp-setup/go.md)
-- [Python](docs/webapp-setup/python.md)
+- [Go](docs/010_common/webapp-setup/go.md)
+- [Python](docs/010_common/webapp-setup/python.md)
 
 Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
@@ -291,23 +295,7 @@ state には、Terraform が作成した AWS リソースの ID が記録され�
 なお、CloudShell のセッションが切れても state は消えません。  
 消えるのは前述の120日経過と、自身で削除した場合だけです。
 
-## 主な変数
-
-| 変数 | デフォルト | 説明 |
-| --- | --- | --- |
-| `region` | `ap-northeast-1` | AMI が公開されているリージョン。通常は変更しない |
-| `allowed_cidrs` | （必須） | HTTP/SSH を許可する接続元 CIDR。`0.0.0.0/0` は不可 |
-| `ami_id` | `ami-09201e964bee13733` | private-isu 競技者用 AMI（Ubuntu 24.04 amd64、ベンチマーカー同梱） |
-| `webapp_instance_type` | `c7a.large` | 競技者用インスタンスタイプ |
-| `enable_benchmarker_instance` | `false` | ベンチマーカー専用インスタンスを作成するか。3章では `false` |
-| `benchmarker_instance_type` | `c7a.xlarge` | ベンチマーカー用インスタンスタイプ |
-| `root_volume_size` | `40` | ルートボリューム(GiB)。初期データが 1GB を超えるため余裕を持たせる |
-| `enable_ssh` | `false` | TCP/22 を開放するか。SSM のみで運用する場合は `false` |
-| `key_name` | `null` | SSH 用キーペア名。`enable_ssh = false` なら不要 |
-| `install_alp` | `true` | 起動時に alp を自動インストールするか（3-2 で使用） |
-| `alp_version` | `1.0.21` | インストールする alp のバージョン |
-| `vpc_cidr` | `10.42.0.0/16` | VPC の CIDR |
-| `subnet_cidr` | `10.42.0.0/24` | パブリックサブネットの CIDR |
+手順の入口は [docs/README.md](docs/README.md)。実 AWS は [docs/040_practice/0010-env.md](docs/040_practice/0010-env.md)（1 台は `webapp_instance_count = 1`、複数台は `3`）。
 
 ## 参考
 
