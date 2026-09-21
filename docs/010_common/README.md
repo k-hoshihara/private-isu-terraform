@@ -9,4 +9,4 @@
 | 0030 | [0030-ops.md](0030-ops.md) | 配布・終盤 |
 | 0040 | [0040-reference.md](0040-reference.md) | ログ切断・台数・レギュレーション |
 
-言語切替は [webapp-setup/](webapp-setup/)。当日 LLM は [prompts/](prompts/)。入口は [../README.md](../README.md)。
+言語切替は [webapp-setup/](webapp-setup/)。当日 LLM は [prompts/](prompts/)。エージェント環境（Claude Code Pro / OpenCode Go 切替）は [init-env.md](init-env.md)。入口は [../README.md](../README.md)。

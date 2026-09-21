@@ -3,25 +3,13 @@
 [0010-env.md](0010-env.md) で `webapp_instance_count = 3` として立てたあと。  
 起動直後の AMI は各台がオールインワン（nginx + アプリ + MySQL）。この手順で役割を分け、余ったプロセスを止め、公式ベンチを nginx 役へ向ける。
 
-方針は [0010-env.md](0010-env.md) と同じ。コマンドは Markdown のブロックのまま残す。ラッパーの `.sh` は置かない。
 
-前提: 分割の前に **全台で Python に切り替える**（[4.](#4-python-に切り替える全台)）。手順は [webapp-setup/python.md](../010_common/webapp-setup/python.md) / [0010-setup.md](../010_common/0010-setup.md) と同じ。  
-既定の練習は **3 台**。役割は入れ替えてよい。T 系は使わない（このリポジトリは `c7a.large`、`ap-northeast-1`）。
 
-## 1. 台数と `config.env`
+## 1. 起動したEC2インスタンスを確認する
 
-Terraform の既定は `webapp_instance_count = 3`。変えるときは `terraform.tfvars`。
+IP はマネジメントコンソール（GUI）で確認する。
 
-```hcl
-webapp_instance_count = 3   # 1 台に戻すなら 1。5 台なら 5
-webapp_instance_type  = "c7a.large"
-```
-
-`apply` 済みなら `terraform apply` で台数が増減する。この手順書では apply しない。
-
-出力の正本はリスト / マップ。1 台目のスカラー（`webapp_public_ip` など）は one-box 用の便宜。
-
-IP はマネジメントコンソール（GUI）で確認する。手順：
+手順：
 
 1. 画面右上でリージョンが `ap-northeast-1` であることを確認する。
 2. EC2 → Instances を開く。
@@ -55,7 +43,7 @@ s1 に入って素振りのベンチを 1 本回す（動作確認用）:
 
 通れば OK。失敗したら先に進まず [備考](#備考) を見る。
 
-実行したら、スコアを手元にメモに控えておく
+**実行したら、スコアを手元にメモに控えておく**
 
 ## 2. 各台で何が動いているかを確認する
 
@@ -89,7 +77,7 @@ Flask + gunicorn は `8080`、unit は `isu-python.service`。nginx が前段。
 
 ## 3. 分割前のバックアップ
 
-サーバ操作（次の Python 切替（[4.](#4-python-に切り替える全台)）を含む）を始める前に取る。これ以降で `/etc`・`env.sh`・gunicorn の bind を変える。**変える前に取る**。ローカルの orig と、GitHub の private リポジトリの 2 系統。
+サーバ操作（次の Python 切替（[4.](#4-python-に切り替える全台)）を含む）を始める前に取る。これ以降で `/etc`・`env.sh`・gunicorn の bind を変える。**変える前に取る**。
 
 - **Linux の設定** — 各台で `~/kit-backup/` に `/etc/nginx` `/etc/mysql` `/etc/memcached.conf` systemd unit / drop-in、`env.sh` をコピーする。壊したらこのディレクトリから戻す。
 - **アプリのファイル** — `webapp/`（`.venv` は除く）を GitHub の **private** リポジトリへ push する。設定のコピーも同じリポジトリの `<台名>/` に載せる。インスタンスを捨てても GitHub から戻せる。
@@ -279,11 +267,11 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1:8080/ || \
 - 軽いアプリ（ログインなど）→ s1 の unix socket
 - 残り（`/`、`/posts`、`/image`、投稿）→ s2 の `http://APP_PRIV:8080`
 
-何を軽い処理にするかはパフォーマンスチューニングのログを見て入れ替える。
-
 セッション情報の取り扱いをするため、基本的には共有memcachedを起動させる。
 
-また、memcachedへのアクセス頻度が最も多い処理を回す計算機に共有memcached serviceを起動させる。（おそらく重い処理を回すプロセスがmemcachedアクセス回数が多い？と想定されるのでチュートリアルではs2に入れる。 ただし実測をしてみるとs1に入れる方が良い可能性もあるためログを見て判断する）
+また、memcachedへのアクセス頻度が最も多い処理を回す計算機に共有memcached serviceを起動させる。
+
+（おそらく重い処理を回すプロセスがmemcachedアクセス回数が多い？と想定されるのでチュートリアルではs2に入れる。 ただし実測をしてみるとs1に入れる方が良い可能性もあるためログを見て判断する）
 
 
 
@@ -402,15 +390,19 @@ sudo ss -lntup | grep -E ':80|:8080|:3306|:11211'
 [1.](#1-台数と-configenv) で控えたプライベート IP を変数に入れる。**各台に入ったあと**、そのシェルで自分の値を入れる。下は例（`10.42.0.144` が s2、`10.42.0.177` が s3）。
 
 ```bash
-APP_PRIV=10.42.0.112    # s2 のプライベート IP（重いアプリ、HTTP）
-MC_PRIV=10.42.0.112     # 共有 memcached。既定は s2 なので APP_PRIV と同じ
-DB_PRIV=10.42.0.47     # s3 のプライベート IP
-WEB_PRIV=10.42.0.197     # s1 のプライベート IP（静的の rsync 用。後で使う）
+# s2 のプライベート IP（重いアプリ、HTTP）
+APP_PRIV=10.42.0.112
+# 共有 memcached。既定は s2 なので APP_PRIV と同じ
+MC_PRIV=10.42.0.112
+# s3 のプライベート IP
+DB_PRIV=10.42.0.47
+# s1 のプライベート IP（静的の rsync 用。後で使う）
+WEB_PRIV=10.42.0.197
 SOCK=/home/isucon/tmp/gunicorn.sock
 SITE=/etc/nginx/sites-enabled/isucon.conf
 ```
 
-`SITE` が無ければ `ls /etc/nginx/sites-enabled`。AMI は `isucon.conf`。
+
 
 ### 2. MySQL（s3 だけ）
 
@@ -451,6 +443,8 @@ SQL
 ```
 
 VPC CIDR が `10.42.0.0/16` 以外なら `10.42.%` を合わせる。
+
+
 
 ### 3. アプリの env.sh（s1 と s2。同じ内容）
 
