@@ -1,10 +1,5 @@
 # 0020 複数台に分割する
 
-[0010-env.md](0010-env.md) で `webapp_instance_count = 3` として立てたあと。  
-起動直後の AMI は各台がオールインワン（nginx + アプリ + MySQL）。この手順で役割を分け、余ったプロセスを止め、公式ベンチを nginx 役へ向ける。
-
-
-
 ## 1. 起動したEC2インスタンスを確認する
 
 IP はマネジメントコンソール（GUI）で確認する。
@@ -18,15 +13,9 @@ IP はマネジメントコンソール（GUI）で確認する。
 5. Public IPv4 address / Private IPv4 addresses 列を読む。列が出ていないときは右上の歯車（Preferences）で表示する。
 6. 読み取った値をローカルのメモに写す。
 
-読み取った値の用途：
-
-- s1 のパブリック IP は必須（ブラウザで `webapp_url` を開く確認に使う）
-- s2 / s3 のパブリック IP は SSH で入る場合に利用するので一応ローカルに控えておく
-- プライベート IP は nginx の upstream・`-`・`MEMCACHED_HOST` に使う（同じ VPC）
 
 
-
-サイト設定の実体は AMI では `isucon.conf`。無ければ `ls /etc/nginx/sites-enabled`。
+サイト設定の実体は AMI では `isucon.conf`。無ければ `ls /etc/nginx/sites-enabled`から確認する
 
 基本的にEC2へのアクセスはEC2 &gt; 接続からアクセスできるSession Manager（GUI）を使う。
 
@@ -44,6 +33,32 @@ s1 に入って素振りのベンチを 1 本回す（動作確認用）:
 通れば OK。失敗したら先に進まず [備考](#備考) を見る。
 
 **実行したら、スコアを手元にメモに控えておく**
+
+
+
+### 実行前準備：GitHub へアクセスできる状況にする
+
+#### 認証（各台で 1 回）
+
+AMI に `gh` は入っていない。入れる。手元のブラウザにコードを入れるだけで通る。
+
+```bash
+sudo apt-get update -y && sudo apt-get install -y gh
+
+# GitHub.com → HTTPS → Y（git の認証にも使う）→ Login with a web browser
+gh auth login
+```
+
+3 つ目の「Authenticate Git with your GitHub credentials?」は **Y**。`gh` が git の credential helper になり、`clone` / `push` でユーザー名とパスワードを聞かれなくなる（`gh auth setup-git` と同じ）。
+
+```bash
+gh auth status
+
+# !gh auth git-credential と出れば Y が効いている
+git config --get credential.https://github.com.helper
+```
+
+
 
 ## 2. 各台で何が動いているかを確認する
 
@@ -79,10 +94,11 @@ Flask + gunicorn は `8080`、unit は `isu-python.service`。nginx が前段。
 
 サーバ操作（次の Python 切替（[4.](#4-python-に切り替える全台)）を含む）を始める前に取る。これ以降で `/etc`・`env.sh`・gunicorn の bind を変える。**変える前に取る**。
 
-- **Linux の設定** — 各台で `~/kit-backup/` に `/etc/nginx` `/etc/mysql` `/etc/memcached.conf` systemd unit / drop-in、`env.sh` をコピーする。壊したらこのディレクトリから戻す。
-- **アプリのファイル** — `webapp/`（`.venv` は除く）を GitHub の **private** リポジトリへ push する。設定のコピーも同じリポジトリの `<台名>/` に載せる。インスタンスを捨てても GitHub から戻せる。
+置き場所は 3 つ。役割が違うので混ぜない。
 
-public リポジトリにしない。`env.sh` と投稿データが入りうる。AMI のストックは残るが、自分の差分は残らない。
+- `~/kit-backup/<TS>/` — 各台のスナップショット。`/etc` の allowlist、`env.sh`、アプリのソース。壊したらここから戻す
+- `~/kit-backup/common/` — 全台同一の配布物（benchmarker）。s1 で 1 回だけ。TS ごと・台ごとに抱えない
+- GitHub の private リポジトリ — `<台名>/` ごとにアプリと設定。インスタンスを捨てても戻せる保険
 
 ### 各台で `~/kit-backup`（Linux 設定）
 
@@ -91,50 +107,42 @@ s1 / s2 / s3 の **全部**。`isucon` で打つ。
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
 BK=/home/isucon/kit-backup/$TS
-mkdir -p "$BK"
+mkdir -p "$BK/etc" "$BK/home"
 
-# home directoryの内容をバックアップコピー。$BK の下に置く
-cp -r $HOME /tmp/home_bk
-mv /tmp/home_bk "$BK/"
+# /etc は allowlist だけ拾う。全量 cp しない（shadow やホスト鍵を抱えない）
+for p in nginx mysql memcached.conf sysctl.d systemd/system security/limits.conf; do
+  if sudo test -e "/etc/$p"; then
+    dest="$BK/etc/$(dirname "$p")"
+    mkdir -p "$dest"
+    sudo cp -a "/etc/$p" "$dest/"
+  fi
+done
 
-# 設定ファイルを全量避難させる
-sudo cp -r /etc "$BK/"
-
-# unit の実体がどこにあるかを確認。 /etcにあるが、そのパスになっていることを cat で確認
+# unit の実体がどこにあるかを確認し、そのメモもBackUpに控えておく
 systemctl cat isu-python.service
+systemctl cat isu-python.service > "$BK/isu-python.service.txt" 2>/dev/null || true
+
+# home は env.sh とアプリのソースだけ。$HOME 丸ごとはやらない
+cp -a /home/isucon/env.sh "$BK/home/"
+rsync -a --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
+  --exclude 'benchmarker/' \
+  /home/isucon/private_isu/ "$BK/home/private_isu/"
+
+# sudo cp で作ったので root 所有。isucon から読めるようにする
+sudo chown -R isucon:isucon "$BK"
 
 find "$BK" -maxdepth 2 -ls
+# file sizeの確認
+du -sh "$BK"
 ```
 
-### GitHub へ（アプリ + 設定）
-
-`$BK` を丸ごと push しない。`sudo cp -r /etc` には `/etc/shadow`、`/etc/ssh/ssh_host_*_key`、`/etc/sudoers.d` が入る。private リポジトリでも鍵とパスワードハッシュは置かない。**必要な設定だけを allowlist で拾う**。
-
-例では `k-hoshihara/isucon2026` を使う。自分のリポジトリに読み替える。**private であることを先に確認する**（`env.sh` に DB 認証情報が入る）。`gh` 無しで見られる。
+### `kit-backup/common`（benchmarker。s1 で 1 回だけやればよい）
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://github.com/k-hoshihara/isucon2026
-# 404 = private（または未作成）、200 = public
-```
-
-200 なら push の前に Settings → General → Danger Zone で private にする。
-
-#### 認証（各台で 1 回）
-
-AMI に `gh` は入っていない。入れる。手元のブラウザにコードを入れるだけで通る。
-
-```bash
-sudo apt-get update -y && sudo apt-get install -y gh
-gh auth login        # GitHub.com → HTTPS → Y（git の認証にも使う）→ Login with a web browser
-```
-
-3 つ目の「Authenticate Git with your GitHub credentials?」は **Y**。`gh` が git の credential helper になり、`clone` / `push` でユーザー名とパスワードを聞かれなくなる（`gh auth setup-git` と同じ）。
-
-8 桁のコードが出て Enter 待ちになる。ブラウザの起動には失敗するので、手元のブラウザで <https://github.com/login/device> を開いてコードを入れる。SSM セッションのまま通る。
-
-```bash
-gh auth status
-git config --get credential.https://github.com.helper   # !gh auth git-credential と出れば Y が効いている
+mkdir -p /home/isucon/kit-backup/common
+cp -a /home/isucon/private_isu/benchmarker /home/isucon/kit-backup/common/
+du -sh /home/isucon/kit-backup/common/benchmarker
+# userdata 込みで 1G 超ある。コピーに時間がかかるのは正常
 ```
 
 #### リポジトリに取り込む（各台）
@@ -142,36 +150,30 @@ git config --get credential.https://github.com.helper   # !gh auth git-credentia
 `HOST` を台ごとに変える。`TS` は `~/kit-backup` の下のディレクトリ名（`ls /home/isucon/kit-backup` で見る）。
 
 ```bash
-TS=<kit-backup の下のディレクトリ名>
-BK=/home/isucon/kit-backup/$TS
-REPO=/home/isucon/isucon2026
-HOST=s1   # 台ごとに s1 / s2 / s3
+# 台ごとに s1 / s2 / s3
+cd $HOME
+HOST='backup/s1'
+REPO=/home/isucon/private-isu-terraform
 
-[ -d "$REPO/.git" ] || git clone https://github.com/k-hoshihara/isucon2026.git "$REPO"
+# env.sh に DB 認証情報が入る。public リポジトリにしない
+[ -d "$REPO/.git" ] || gh repo clone k-hoshihara/private-isu-terraform "$REPO"
 
-# sudo cp で作ったので root 所有。isucon から読めるようにする
+# sudo cp で作ったので root 所有。isucon から読めるようにする（コピー手順で済みなら不要）
 sudo chown -R isucon:isucon "$BK"
 
 D="$REPO/$HOST"
-mkdir -p "$D/etc" "$D/home"
+mkdir -p "$D/home"
 
-# /etc は必要なものだけ拾う。shadow / ssh host key / sudoers は入れない
-for p in nginx mysql memcached.conf sysctl.d systemd/system security/limits.conf; do
-  src="$BK/etc/$p"
-  [ -e "$src" ] || continue
-  mkdir -p "$D/etc/$(dirname "$p")"
-  rm -rf "$D/etc/$p"
-  cp -a "$src" "$D/etc/$p"
-done
+# /etc は $BK の時点で allowlist 済み（shadow / ssh host key / sudoers なし）。丸ごと移す
+cp -a "$BK/etc" "$D/etc"
 
 # アプリと env.sh。.venv と .git は除く
-# benchmarker/ は userdata だけで 1.2G ある。AMI の配布物で自分では書き換えないので入れない
+# benchmarker/ は $BK に入れていない（~/kit-backup/common/ にある）。AMI の配布物で自分では書き換えないのでリポジトリにも入れない
 # --delete だけでは除外したファイルは受信側に残る。除外を足して打ち直すときは --delete-excluded が要る
 rsync -a --delete --delete-excluded \
   --exclude '.venv/' --exclude '.git/' --exclude 'node_modules/' \
-  --exclude 'benchmarker/' \
-  "$BK/home_bk/private_isu/" "$D/home/private_isu/"
-cp -a "$BK/home_bk/env.sh" "$D/home/env.sh"
+  "$BK/home/private_isu/" "$D/home/private_isu/"
+cp -a "$BK/home/env.sh" "$D/home/env.sh"
 
 du -sh "$D"
 
@@ -180,7 +182,7 @@ find "$D" -type f -size +50M -printf '%s %p\n' | sort -rn | head
 du -sh "$D"/home/private_isu/* | sort -h | tail -10
 ```
 
-`go/`・`backup/`・`kit-backup/` も入れない。ビルド成果物とバックアップの入れ子で膨らむだけ。除外が効いていれば `$D` は数十 MB に収まる。バックアップするのは**自分が書き換えるもの**（アプリのソース、`/etc` の設定、`env.sh`）だけで、配布物は対象外。ベンチマーカーの設定を自分で変えたときだけ、そのファイルを個別に足す（userdata は要らない）。
+`go/`・`backup/` も入れない。ビルド成果物とバックアップの入れ子で膨らむだけ。除外が効いていれば `$D` は数十 MB に収まる。バックアップするのは**自分が書き換えるもの**（アプリのソース、`/etc` の設定、`env.sh`）だけで、配布物は対象外。ベンチマーカーの設定を自分で変えたときだけ、そのファイルを個別に足す（userdata は要らない）。ベンチマーカー本体は `~/kit-backup/common/benchmarker/` にある。
 
 #### push
 
@@ -189,27 +191,18 @@ cd "$REPO"
 git config user.name  "<GitHub ユーザー名>"
 git config user.email "<GitHub に登録したメールアドレス>"
 
+git switch -c feature/backup
+
 git add -A
 git status --short | head       # <台名>/etc と <台名>/home が並ぶことを確認する
 git commit -m "$HOST: 分割前ベースライン ($TS)"
 git pull --rebase origin main   # 2 台目から。他の台が先に push している
-git push -u origin main
+git push -u origin feature/backup
 ```
 
-1 台目はリモートに何も無いので `pull` は `couldn't find remote ref main` で落ちる。飛ばして `push` してよい。`src refspec main does not match any` で落ちたら、空リポジトリの clone でブランチが未作成なので `git branch -M main` を挟む。
+
 
 3 台が同じリポジトリに push する。順番にやるか、2 台目からは毎回 `git pull --rebase` を挟む。`$HOST` でディレクトリが分かれるので中身は衝突しない。
-
-空のリポジトリを作った直後で `clone` できないときだけ、`$REPO` で `git init -b main` と `git remote add origin <URL>` を先に打つ。
-
-#### 戻す
-
-```bash
-sudo cp -a /home/isucon/isucon2026/s1/etc/nginx /etc/
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-`~/kit-backup/` が生きていればそちらが速い。GitHub 側はインスタンスを捨てた後の保険。
 
 ## 4. Python に切り替える（全台）
 

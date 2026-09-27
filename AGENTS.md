@@ -1,55 +1,60 @@
-# Agent instructions
+# エージェント指示
 
-This repository uses portable agent files: `AGENTS.md` (always-on) and `.agents/skills/` (on demand). Do not add Grok-only (`.grok/`) or OpenCode-only (`.opencode/`) copies of these rules.
+このリポジトリのエージェント用ファイルはポータブルにする:常時有効な `AGENTS.md` と、必要時に読む `.agents/skills/`。ツール固有の複製は作らない（`.grok/` や `.opencode/` のコピー禁止）。Claude Code 用の橋渡しは symlink のみ（`CLAUDE.md` → `AGENTS.md`、`.claude/skills` → `.agents/skills`）。実体の複製は置かない。
 
-## Git: agents do not commit
+オンデマンドの skill 一覧:
 
-This applies to every agent, subagent, and git/Orca worktree worker in this repo.
+- `task-worktree` — 子 worktree を切って別エージェントで実装する手順
+- `docs-preview` — Markdown を docsify でプレビューする手順
 
-1. Make file changes only. Leave them **uncommitted** (`git add` / `git commit` / `git commit --amend` / `git push` / `--force` are forbidden unless the user explicitly asks for that action in the current message).
-2. Stop for human review. Point at `git status` and `git diff` (working tree vs `HEAD`), not at a commit range.
-3. "Looks good" / review approval is **not** permission to commit. Commit only when the user says to commit (then **one** commit, squash if several drafts exist). Push only when the user says to push.
-4. Do not remove a child worktree that still has uncommitted work (`worktree rm` would drop it). After a successful land onto `feature/<topic>`, removing that child worktree is the **standard** next step (see below). Do not wait for a second message that only says to delete it.
+## Git: エージェントはコミットしない
 
-## Branches
+このリポジトリで動くすべてのエージェント、サブエージェント、git / Orca worktree ワーカーが対象。
 
-Three roles. Names follow the current stream; do not hard-code a topic.
+1. ファイル変更のみ行い、**未コミットのまま残す**（`git add` / `git commit` / `git commit --amend` / `git push` / `--force` は、ユーザーが現メッセージでその操作を明示的に指示した場合のみ可）。
+2. 人のレビューで止まる。`git status` と `git diff`（作業ツリー対 `HEAD`）を示す。コミット範囲では示さない。
+3. 「よさそう」やレビュー承認はコミットの許可ではない。「コミットして」と言われたときのみコミット（その場合は**1コミット**、下書きが複数あれば squash）。「push して」と言われたときのみ push。
+4. 未コミット作業が残る子 worktree を消さない（`worktree rm` で消えてしまう）。`feature/<topic>` への land 成功後は、子 worktree の削除が**標準の次手順**（下記参照）。削除だけを頼む2通目のメッセージを待たない。
 
-| Role | Typical name | Meaning |
+## ブランチ
+
+3つの役割。名前は現ストリームに従う。トピックを決め打ちしない。
+
+| 役割 | 典型名 | 意味 |
 | --- | --- | --- |
-| Upstream | `origin/main` | Published default. Do not rebase onto it, merge to it, open a PR to it, or use it as the diff base unless the user names `main`. |
-| Develop | `develop/<topic>` | Local integration for one stream. Feature-stream diffs are against this branch. |
-| Feature | `feature/<topic>` | Local work on that stream. Parent checkout. Child worktrees stack here. |
+| Upstream | `origin/main` | 公開の既定。ユーザーが `main` を名指ししない限り、rebase 先・merge 先・PR 先・diff 基準に使わない |
+| Develop | `develop/<topic>` | 1ストリームのローカル統合先。フィーチャーストリームの diff はこのブランチ基準 |
+| Feature | `feature/<topic>` | そのストリームのローカル作業先。親チェックアウト。子 worktree はここに積む |
 
-`<topic>` is the suffix of the parent feature branch (for example `feature/foo` pairs with `develop/foo`). If that `develop/<topic>` branch does not exist, stop and ask. Do not fall back to `origin/main`.
+`<topic>` は親 feature ブランチの接尾辞（例: `feature/foo` には `develop/foo`）。対応する `develop/<topic>` が無ければ止めて聞く。`origin/main` で代用しない。
 
-Compare the stream with:
+ストリームの比較はこうする:
 
 ```text
 git diff develop/<topic>...feature/<topic>
 git log --oneline develop/<topic>..feature/<topic>
 ```
 
-Child in-review still uses the child's working tree vs `HEAD` (`git status` / `git diff`). After work is on the feature branch, the stream range is `develop/<topic>...feature/<topic>`. Do not report `origin/main...HEAD`.
+レビュー中の子は子の作業ツリー対 `HEAD`（`git status` / `git diff`）で見る。作業が feature ブランチに乗った後はストリーム範囲 `develop/<topic>...feature/<topic>` で見る。`origin/main...HEAD` で報告しない。
 
-`develop/*` and `feature/*` in this layout are local unless the user says otherwise. Do not `git push` them unless asked.
+`develop/*` と `feature/*` は、ユーザーが言うまではローカル扱い。言われるまで `git push` しない。
 
-## Integration worktrees
+## 統合作業ツリー
 
-Implementation work does **not** land directly on the parent checkout.
+実装作業は親チェックアウトに直接載せない。
 
-1. The parent worktree is a `feature/<topic>` branch. That is the stack base, not `main` and not `develop/<topic>`.
-2. For a discrete implementation task, follow [`.agents/skills/task-worktree/SKILL.md`](.agents/skills/task-worktree/SKILL.md): create a child worktree from that feature branch, do the work there, then stop for review.
-3. Do **not** merge, rebase onto `main`/`master` or `develop/<topic>`, commit, push, or open a PR until the user has reviewed the working-tree diff and explicitly asked for the next git action.
-4. Landing onto the feature branch is a single standard sequence. When the user asks to land / integrate / 統合 onto `feature/<topic>`:
-   1. Bring the child's working-tree changes onto `feature/<topic>`.
-   2. Make **one** commit there (`git merge --squash` after a single child commit, or apply the child's working tree and commit once on the parent).
-   3. Remove the child worktree (`ORCA worktree rm` / `git worktree remove`). This deletion is part of the land, not an optional extra.
-   4. Stop. Do not `git push`. Do not merge into `develop/<topic>` unless the user asked for that too.
-5. Do not merge `feature/<topic>` into `develop/<topic>` unless the user asks. Never merge to `main`/`master` unless the user explicitly names that branch. If landing failed and the child still has uncommitted work, do not `worktree rm`.
+1. 親 worktree は `feature/<topic>` ブランチ。そのスタックの土台であり、`main` でも `develop/<topic>` でもない。
+2. まとまった実装タスクは [`.agents/skills/task-worktree/SKILL.md`](.agents/skills/task-worktree/SKILL.md) に従う:その feature ブランチから子 worktree を切り、作業して人のレビューで止まる。
+3. ユーザーが作業ツリーの diff をレビューし、次の git 操作を明示するまで、merge、`main` / `master` や `develop/<topic>` への rebase、commit、push、PR をしない。
+4. feature ブランチへの land は単一の標準手順。ユーザーが `feature/<topic>` へ land / integrate / 統合と言うとき:
+   1. 子の作業ツリー変更を `feature/<topic>` へ載せる。
+   2. そこで **1** コミットにする（子でコミット済みが1つなら `git merge --squash`、子の作業ツリーをそのまま載せるなら親で1コミット）。
+   3. 子 worktree を消す（`ORCA worktree rm` / `git worktree remove`）。この削除は land の一部であり、任意のおまけではない。
+   4. 止まる。`git push` しない。ユーザーが一緒に頼まない限り `develop/<topic>` へ merge しない。
+5. ユーザーが頼まない限り `feature/<topic>` を `develop/<topic>` へ merge しない。ユーザーがそのブランチを明示しない限り `main` / `master` へは絶対に merge しない。land に失敗して子に未コミット作業が残っているなら `worktree rm` しない。
 
-Questions, read-only investigation, and tiny one-line answers stay in the parent worktree.
+質問、読み取り専用の調査、ささいな一行回答は親 worktree のまま行う。
 
-## Project
+## プロジェクト
 
-Terraform for [catatsuy/private-isu](https://github.com/catatsuy/private-isu) on AWS (`ap-northeast-1`). Run `terraform` in `terraform/`. Operational docs live in `docs/` (`010_common` / `040_practice`; files numbered 0010, 0020, …). Do not `terraform apply` / `destroy` unless the user asks.
+AWS（`ap-northeast-1`）上の [catatsuy/private-isu](https://github.com/catatsuy/private-isu) 用 Terraform。`terraform` は `terraform/` で実行する。運用ドキュメントは `docs/`（`010_common` / `040_practice`、0010、0020、…の番号順）。ユーザーが言うまで `terraform apply` / `destroy` しない。
