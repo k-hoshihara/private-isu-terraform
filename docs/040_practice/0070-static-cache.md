@@ -11,13 +11,13 @@
 
 前提:
 
-- EC2 は 1 台（[0010-env.md](0010-env.md) で `webapp_instance_count = 1`）。複数台の項（6.）だけ [0020-split.md](0020-split.md) 後の s1 対応
+- EC2 は 1 台（[0010-env.md](0010-env.md) で `webapp_instance_count = 1`）。複数台の項（6.）だけ [0020-split-1.md](0020-split-1.md) 後の s1 対応
 - 実装は問わない。静的・画像の配信経路が nginx であること（`root /home/isucon/private_isu/webapp/public/` 配下か、ファイル化した `/image/`）
 - [0030-measure.md](0030-measure.md) の計測サイクルを回せること。bench-prep と `scores.txt` はそちらと同じ
 - [0040-cache.md](0040-cache.md) §6 が入口。§6 の `Cache-Control: public, max-age=60` までやった状態から入ると早い。未実施なら 1.〜2. の「付ける前」から入る
 - private-isu のベンチマーカーは条件付きリクエストに対応している。8-5 の手法でスコアが動くことがある。動かない回は `curl` + ログの前後差を本体の判定にする
 
-順番: 対象を決める（1.）→ 付ける前（2.）→ 静的配信に寄せる（3.）→ `expires`（4.）→ `304` 再現（5.）→ 台間一致（6.、1 台なら読みだけ）→ 更新時の外し方（7.）→ ベンチ判定（8.）。1 手ずつ。`fail` が 0 でない点数は比べない。
+順番: 対象を決める（1.）→ 付ける前（2.）→ 静的配信に寄せる（3.）→ `expires`（4.）→ `304` 再現（5.）→ 台間一致（6.、1 台なら読みだけ）→ 更新時の外し方（7.）→ ベンチ判定（8.）。1 手ずつ。`fail` が 0 でない点数は比べない。出口は [0080-infra-params.md](0080-infra-params.md)。
 
 点数は `~/bench-notes/scores.txt` に 1 行。転送量の目安も一緒に書く:
 
@@ -49,7 +49,7 @@ ls -l /home/isucon/private_isu/webapp/public/
 
 ### 観察すること
 
-- 自分の 1 手が「`/image/`」「`public/` 静的」のどちらか言える
+- 自分の 1 手が「`/image/`」「`public/` 静的」のどちらかを言える
 - alp の Sum 上位と対象が一致している（上位に無いパスを触らない）
 - `/image` が未ファイル化なら対象を `public/` 静的に変えた（無理に広げない）
 
@@ -70,7 +70,7 @@ sudo cat /var/log/nginx/access.log | tail -2
 # 2 回叩いた分だけ行が増える = 毎回サーバまで来て毎回 200 で本文を返している
 ```
 
-転送量の目安を取る（`304` 後の比較原点）。`size_download` が本文サイズ:
+転送量の目安を取る（`304` 応答後の比較原点にする）。`size_download` が本文サイズを表す:
 
 ```bash
 curl -s -o /dev/null -w 'http=%{http_code} size=%{size_download} time=%{time_total}s\n' http://127.0.0.1/image/1
@@ -81,11 +81,11 @@ curl -s -o /dev/null -w 'http=%{http_code} size=%{size_download} time=%{time_tot
 
 - 対象パスの応答ヘッダに `Cache-Control` / `ETag` / `Last-Modified` が無い（あるなら既設。4. へ進む）
 - `curl` 2 回でログが 2 行増える（毎回サーバまで来ている）
-- `size_download` を控えた（`304` 化後の 0 バイト比較用）
+- `size_download` を控えた（`304` 応答時の 0 バイトと比較するため）
 
 ## 3. nginx でファイルを配信する形に寄せる（条件付きの土台）
 
-条件付きリクエスト（5.）は、nginx がファイルを配信するときは自動で付く。アプリ（Flask / Go）が DB から読んで返すときは自動では付かない。自前で `304` 実装するより、対象を nginx のファイル配信に寄せる方が早い。
+条件付きリクエスト（5.）は、nginx がファイルを配信する場合は自動で付く。アプリ（Flask / Go）が DB から読んで返すときは自動では付かない。自前で `304` を実装するより、対象を nginx のファイル配信に寄せる方が早い。
 
 今の配信経路を見る:
 
@@ -95,7 +95,7 @@ cat /etc/nginx/sites-enabled/isucon 2>/dev/null || cat /etc/nginx/conf.d/*.conf 
 grep -rn 'proxy_pass\|root\|location /image\|location /css' /etc/nginx/sites-enabled/ | head -20
 ```
 
-- `location /css/ { }` のように空で `root` 配下を返す形なら、そのままファイル配信。3. は何もしないで 4. へ
+- `location /css/ { }` のように空で `root` 配下を返す形なら、そのままファイル配信になっている。この節（3.）は何もしないで 4. へ進む
 - `/image/` が `proxy_pass` のまま（DB 配信）なら、ファイル化済みのときだけ `try_files` を前に足す。未ファイル化なら付けない（重いアプリへ proxy のまま。対象を `public/` 静的に変える）
 
 ```nginx
@@ -125,7 +125,7 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/css/style.css
 
 ## 4. `expires` で保持期間を付ける（1 箇所だけ）
 
-本のリスト 11 そのまま。対象の location だけに付ける。全体に付けない。
+本のリスト 11 そのままの設定を使う。対象の location だけに付ける。全体に付けない。
 
 ```nginx
 server {
@@ -137,7 +137,7 @@ server {
 }
 ```
 
-`expires 1d;` で `Cache-Control: max-age=86400` と `Expires` が返る。各クライアントが 1 日保持できる。初回は `1d` から入る。いきなり 1 年にしない。`public/` 静的で試すなら対象を `/css/` などに変える（どちらか 1 つ）。
+`expires 1d;` で `Cache-Control: max-age=86400` と `Expires` が返る。各クライアントは 1 日間キャッシュできる。初回は `1d` から入る。いきなり 1 年にしない。`public/` 静的で試すなら対象を `/css/` などに変える（どちらか 1 つ）。
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
@@ -160,7 +160,7 @@ curl -sI http://127.0.0.1/image/1 | grep -i -E 'cache-control|expires|etag|last-
 
 ## 5. 条件付きリクエストで `304` を再現する（転送量の差）
 
-4. まででヘッダが出たら、ブラウザの 2 回目を `curl` で再現する。保存した `Last-Modified` / `ETag` をリクエストに付けて送り、変化が無ければ `304`（本文空）が返る。
+4. までやってヘッダが出たら、ブラウザの 2 回目を `curl` で再現する。保存した `Last-Modified` / `ETag` をリクエストに付けて送り、変化が無ければ `304`（本文空）が返る。
 
 ```bash
 # 1. 値を保存する
@@ -179,11 +179,11 @@ curl -s -o /dev/null -w 'http=%{http_code} size=%{size_download}\n' -H "If-Modif
 
 読み方:
 
-- `304 size=0` → 条件付きが効いている。本文転送が消えた分が高速化の本体
+- `304 size=0` → 条件付きが効いている。本文転送が消えた分が高速化の効果になる
 - ずっと `200` → アプリ配信のまま（nginx の自動付与が効かない経路）か、ヘッダ値の写し間違い（`"` の脱落、`Date:` との取り違え）。4. の `curl -sI` に戻る
-- `curl` 2 回素叩きではログは減らない（`curl` はキャッシュしないので正常）。「来なさ」はブラウザか次の DevTools 手順で見る
+- `curl` で条件を付けずに 2 回叩いてもログは減らない（`curl` はキャッシュしないので正常）。「来なさ」はブラウザか次の DevTools 手順で見る
 
-ブラウザで見る（`curl` はキャッシュしないので、来なさはこっちで確認）:
+ブラウザで見る（`curl` はキャッシュしないので、来なさはここで確認する）:
 
 1. DevTools → Network を開き、`Disable cache` のチェックを外す
 2. 対象（`/image/1` か `/css/style.css`）をリロード 2 回
@@ -199,14 +199,14 @@ sudo cat /var/log/nginx/access.log | tail -2
 ### 観察すること
 
 - `If-None-Match` か `If-Modified-Since` のどちらかで `304 size=0` を出した（両方出ればなおよい）
-- `200` 時の `size_download` と `304` 時の `0` を 2 数で言える（転送量差が高速化の根拠）
+- `200` 時の `size_download` と `304` 時の `0` を 2 つの数字で言える（転送量差が高速化の根拠）
 - ブラウザ 2 回目が cache / `304` で、サーバのログが増えない
 
 ## 6. 複数台では `ETag` の台間一致を確認する（1 台なら読みだけ）
 
 配信サーバが複数台あるとき、台ごとに違う `Last-Modified` / `ETag` を返すとクライアントのキャッシュが効かない。nginx のファイル配信では、mtime が同じなら同じ `Last-Modified` が、mtime とサイズが同じなら同じ `ETag` が生成できる。同じファイルならサイズは同じはずなので、合わせるのは mtime。
 
-1 台構成ならここは読みだけ。4.〜5. が通っていれば次へ進む。分割後（[0020-split.md](0020-split.md)）の s1 が複数ある回だけ実施する。
+1 台構成ならここは読みだけ。4.〜5. が通っていれば次へ進む。配信役（s1）が複数台ある構成の回だけ実施する（[0020-split-1.md](0020-split-1.md) の分割後）。
 
 ```bash
 # 各配信台で同じファイルの mtime と応答ヘッダを比べる
@@ -224,8 +224,8 @@ stat -c '%y %s %n' /home/isucon/private_isu/webapp/public/css/style.css
 curl -sI http://${WEB_PRIV}/css/style.css | grep -i -E 'etag|last-modified'
 ```
 
-- `rsync` は `-t`（mtime 保持）が要る。`-a` に含まれるので `-a` で同じ機能になる。`-t` 無しの転送は mtime がずれて `ETag` が割れる
-- どちらか片方があれば十分なので、紛らわしければ `Last-Modified` だけに寄せる考え方もある。nginx では `etag off;` で無効化できる（既定は有効）。台間一致が取れないときの選択肢として覚える。安易に両方消さない
+- `rsync` には `-t`（mtime 保持）を付ける。`-a` に含まれているので `-a` で足りる。`-t` 無しの転送は mtime がずれて `ETag` が割れる
+- どちらか片方があれば十分なので、紛らわしい場合は `Last-Modified` だけに寄せる考え方もある。nginx では `etag off;` で無効化できる（既定は有効）。台間一致が取れないときの選択肢として覚える。両方を消すのは安易にやらない
 
 ```nginx
 # ETag を切るときだけ（対象の location へ。全体に付けない）
@@ -253,19 +253,19 @@ grep -rn 'stylesheet\|script src' /home/isucon/private_isu/webapp/public/*.html 
 find /home/isucon/private_isu/webapp/public -name '*.*.*.css' -o -name '*.chunk.js' | head
 ```
 
-- ビルド時にハッシュ付き名が出る構成なら、そのままが正解。手で `max-age` を延ばすだけでよい
+- ビルド時にハッシュ付き名が出る構成なら、その構成のままが正解。手で `max-age` を延ばすだけでよい
 - ハッシュが無い素体で長期 `max-age`（1 年など）にするときは、更新手順（名変更かクエリ付与）を決めてから延ばす。決めずに延ばさない
-- `/image/` の投稿画像は追記型（新規 id が増える）なので、既存 id の上書きが無ければ長期でも安全。プロフィール画像のように上書きがある箇所だけ短めに残す
+- `/image/` の投稿画像は追記型（新規 id が増える）なので、既存 id の上書きが無ければ長期でも安全。プロフィール画像のように上書きがある箇所だけ `max-age` を短めに残す
 
 ### 観察すること
 
-- 自分の長期化対象に更新手順があるか言える（名変更 / クエリ / 追記型で安全）
+- 長期化する対象に更新手順があるか言える（名変更 / クエリ / 追記型で安全）
 - 手順が無い箇所の `max-age` は `1d` のまま（延ばさない）
 - 更新後に `curl -sI` の新旧 URL で別物として返ることを確認した
 
 ## 8. 公式ベンチで判定する（点数＋転送量＋alp）
 
-4.〜7. のうち 1 手だけ残し、他は戻した状態で公式ベンチ 1 本。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
+4.〜7. のうち 1 手だけ残し、他は戻した状態にして公式ベンチを 1 本回す。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
 
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
@@ -290,10 +290,10 @@ sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH" |
 curl -s -o /dev/null -w 'http=%{http_code} size=%{size_download}\n' http://127.0.0.1/image/1
 ```
 
-- ベンチマーカーは条件付きに対応している回は点数が動く。対応しない回は点数が動かなくてもよい。そのときは 5. の `304 size=0` とログの来なさを本体の判定にする（[0040 §6](0040-cache.md#6-cache-control-を付ける前後で挙動を比べる) と同じ）
+- ベンチマーカーが条件付きに対応している構成では点数が動く。対応しない構成では点数が動かなくてもよい。そのときは 5. の `304 size=0` とログの来なさを本体の判定にする（[0040 §6](0040-cache.md#6-cache-control-を付ける前後で挙動を比べる) と同じ）
 - `proxy_cache`（[0040 §5](0040-cache.md#5-nginx-で-1-箇所だけキャッシュして-hit-率で評価する)）とは別々にやる。同時に入れて比べない
 
-戻すときは付けた location の `expires` 1 行だけ消して reload:
+戻すときは付けた location の `expires` 1 行だけ消して reload する:
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
@@ -318,7 +318,7 @@ curl -sI http://127.0.0.1/image/1 | grep -i -E 'cache-control|expires' || echo '
 
 - ヘッダ値の写し間違いが一番多い。`ETag` は `"` 付き全体、`Last-Modified` は曜日から GMT まで全体を写す。`Date:` と取り違えていないか
 - アプリ配信のまま条件付きを期待していないか。`ETag` / `Last-Modified` 自体が出ていないなら 4. に戻る
-- `curl` 素叩き 2 回でログが減らないのは正常（`curl` はキャッシュしない）。`304` は条件付きヘッダ付きのときだけ
+- 条件を付けずに `curl` を 2 回叩いてもログが減らないのは正常（`curl` はキャッシュしない）。`304` は条件付きヘッダ付きのときだけ返る
 
 ### ブラウザ 2 回目も毎回 `200` でログが増える
 

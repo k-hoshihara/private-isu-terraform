@@ -1,6 +1,6 @@
 # 0060 タイムアウトとプール上限を Python で検証する
 
-[0050-http-client.md](0050-http-client.md) の続き。0050 が使い回し全体なら、ここは引用の Go リスト 8 / 9 を Python に置き換えて数字で確認する。
+[0050-http-client.md](0050-http-client.md) の続き。0050 が使い回し全体の話なら、ここは引用の Go リスト 8 / 9 を Python に置き換えて数字で確認する。
 
 - リスト 8: `http.Client{Timeout: 5 * time.Second}` を必ず付ける（`http.DefaultClient` / `http.Get` を本番で使わない理由）
 - リスト 9: `Transport{MaxIdleConns / MaxIdleConnsPerHost / IdleConnTimeout}` の上限を確認する
@@ -16,7 +16,7 @@
 - [0030-measure.md](0030-measure.md) の計測サイクルを回せること。bench-prep と `scores.txt` はそちらと同じ
 - private-isu 素体の `app.py` は DB / memcached 直結で、外への HTTP 呼び出しは無いことが多い。そのときは 2.〜6. の合成再現で型を掴み、7. を本番の 1 手にする
 
-順番: 対応表（1.）→ 遅延サーバ（2.）→ 固まること（3.）→ 付けて返すこと（4.）→ GET / POST 分離（5.）→ 上限（6.）→ アプリへの足し方（7.）→ 判定（8.）。1 手ずつ。`fail` が 0 でない点数は比べない。
+順番: 対応表（1.）→ 遅延サーバ（2.）→ 固まること（3.）→ 付けて返すこと（4.）→ GET / POST 分離（5.）→ 上限（6.）→ アプリへの足し方（7.）→ 判定（8.）。1 手ずつ。`fail` が 0 でない点数は比べない。出口は [0070-static-cache.md](0070-static-cache.md)。
 
 ```bash
 mkdir -p ~/bench-notes
@@ -25,19 +25,19 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=timeout-baseline" >> ~/bench
 
 ## 1. Go リスト 8 / 9 と Python の対応表
 
-引用の Go をそのまま Python に読み替える。この表がこのドリルの正本。
+引用の Go をそのまま Python に読み替える。この表がこのドリルの対応基準。
 
 | Go（引用） | Python（このドリル） | 出発点 |
 | --- | --- | --- |
-| リスト 8 `http.Client{Timeout: 5s}` | `requests.get(url, timeout=5)`。単数値は connect + read の全体 | まず 5 秒。必ず付ける。無しが既定 |
-| `http.Get` = `DefaultClient` で Timeout 無し、本番非推奨 | `requests.get(url)` の timeout 無しも同じ。無限に待つ | `grep` で無しを 0 にする（4.） |
+| リスト 8 `http.Client{Timeout: 5s}` | `requests.get(url, timeout=5)`。単数値は connect + read の全体 | まず 5 秒。必ず付ける。付けないのが既定 |
+| `http.Get` = `DefaultClient` で Timeout 無し、本番非推奨 | `requests.get(url)` の timeout 無しも同じで、無限に待つ | `grep` で無しを 0 にする（4.） |
 | PHP `CURLOPT_TIMEOUT` + `CURLOPT_CONNECTTIMEOUT` の両指定 | `timeout=(connect, read)` のタプル。`urllib3.Timeout(connect=, read=)` も同じ | `(3, 5)` から入る。connect 3 秒 / read 5 秒 |
 | GET 短め / POST 長めに分ける | GET 用と POST 用で値を分ける（5.） | GET `(2, 3)`、POST `(3, 10)` の例から振る |
 | リスト 9 `MaxIdleConns`（全体 100） | `HTTPAdapter(pool_connections=10)`（ホスト種別数）。`requests.Session` 既定 10 | まず 10〜20。増やす前に効果を見る |
 | リスト 9 `MaxIdleConnsPerHost`（既定 2） | `HTTPAdapter(pool_maxsize=10)`（ホスト毎の保持数）。`requests` 既定 10 | まず 10〜20。絞りすぎない（6.） |
 | リスト 9 `IdleConnTimeout`（既定 90 秒） | `urllib3` 側の keepalive 維持。`requests` 単体では直接の項目名は無い | アプリ側で触らず、nginx の `keepalive_timeout` と対で見る |
 
-`requests` の既定は `pool_connections=10, pool_maxsize=10, pool_block=False`。`pool_block=False` のとき上限を超えても待たずに新規接続を作る（捨てるだけ）。待ち行列にしたいときだけ `pool_block=True` にする（6. で振る舞いの差を見る）。Go の `MaxConnsPerHost=0`（無制限）から入るのと同じ考え方で、最初から絞らない。
+`requests` の既定は `pool_connections=10, pool_maxsize=10, pool_block=False`。`pool_block=False` のとき上限を超えても待たずに新規接続を作る（超えた分はプールに戻さない）。待ち行列にしたいときだけ `pool_block=True` にする（6. で振る舞いの差を見る）。Go の `MaxConnsPerHost=0`（無制限）から入るのと同じ考え方で、最初から絞らない。
 
 今のコードを洗い出す:
 
@@ -50,11 +50,11 @@ grep -rn 'proxy_.*_timeout\|keepalive_timeout' /etc/nginx/sites-enabled/ | head
 
 - `requests.get` があちこちにあって `Session` が無い → 7. で 1 個にまとめる
 - `timeout=` が無い行がある → 4. で付ける
-- どこにも HTTP 呼び出しが無い → 2.〜6. は合成で練習し、7. の nginx upstream を本番適用にする（[0050](0050-http-client.md#4-nginx-の-upstream-を使い回す1-台でも効く)）
+- どこにも HTTP 呼び出しが無い → 2.〜6. は合成で練習し、7. の nginx upstream を本番の 1 手にする（[0050](0050-http-client.md#4-nginx-の-upstream-を使い回す1-台でも効く)）
 
 ### 観察すること
 
-- 自分の 1 手が「アプリの `Session`」「nginx の `proxy_*_timeout`」のどちらか言える
+- 自分の 1 手が「アプリの `Session`」「nginx の `proxy_*_timeout`」のどちらかを言える
 - `timeout` 無しの行が残っているか `grep` で言える
 - 見つからなければ合成再現から入る（無理にアプリをいじらない）
 
@@ -97,7 +97,7 @@ sleep 1
 curl -s -m 2 http://127.0.0.1:18080/slow -o /dev/null -w 'curl exit=%{exitcode} http=%{http_code}\n' || true
 ```
 
-- `curl -m 2` が exit 28（timeout）で返ること。相手が 10 秒固まるのを確認したことになる
+- `curl -m 2` が exit 28（timeout）で返ること。これで相手が 10 秒固まることを確認したことになる
 - 終わったら必ず殺す: `kill $(cat /tmp/timeout/delay.pid)`
 - `/tmp` 配下なので再起動で消える。本番コードに置かない
 
@@ -108,17 +108,17 @@ python3 -c 'import requests' 2>/dev/null || pip install -q requests
 python3 -c 'import requests; print(requests.__version__)'
 ```
 
-アプリ本体に `requests` を足すときは `uv add` + `uv sync` が要る（7.）。ここでは `/tmp` の system python でよい。
+アプリ本体に `requests` を足すときは `uv add` + `uv sync` が要る（7.）。ここでは `/tmp` 用に system の python を使えばよい。
 
 ### 観察すること
 
 - `curl -m 2` が timeout する（相手の遅さが再現できた）
-- `delay.py` のプロセスが `ps` で見える。殺したら `curl` が connection refused に変わる
+- `delay.py` のプロセスが `ps` で見える。殺すと `curl` が connection refused に変わる
 - `:8080` のアプリは壊れていない（`curl -fsS -o /dev/null -m 5 http://127.0.0.1:8080/`）
 
 ## 3. タイムアウト無しが固まることを確認する
 
-引用の「レスポンスが返ってくるまで無限に待つ」を手で再現する。`timeout` コマンドはプロセスの殺しであり、アプリのタイムアウトではない。違いを意識する。
+引用の「レスポンスが返ってくるまで無限に待つ」を手で再現する。`timeout` コマンドはプロセスを殺すものであり、アプリのタイムアウトではない。違いを意識する。
 
 ```bash
 # 1. timeout 無しは 10 秒固まる。shell 側の timeout 4 で殺す（exit 124 が殺された証拠）
@@ -132,7 +132,7 @@ timeout 4 python3 -c "import urllib.request; print(urllib.request.urlopen('http:
 - どちらも本文が出ず、`timeout` コマンドに殺される（exit 124）
 - これが gunicorn のワーカーで起きると、そのワーカーは 10 秒まるごと塞がる。同時に来たリクエストが溜まって高負荷になる。引用の「処理中のリクエストが大量に溜まる」はこのこと
 
-gunicorn の `--timeout`（ワーカー殺し）と混ぜない。`--timeout` は固まった後の殺しであり、HTTP の待ちそのものを短くしない。先に HTTP 側の `timeout` を付ける。
+gunicorn の `--timeout`（ワーカーを殺す設定）と混同しない。`--timeout` は固まった後に殺すためのものであり、HTTP の待ちそのものを短くしない。先に HTTP 側の `timeout` を付ける。
 
 ### 観察すること
 
@@ -142,7 +142,7 @@ gunicorn の `--timeout`（ワーカー殺し）と混ぜない。`--timeout` �
 
 ## 4. タイムアウトを付けて例外で返す
 
-リスト 8 の `Timeout: 5s` 相当。付けたら固まらず例外で返る。まず単数値、次にタプル。
+リスト 8 の `Timeout: 5s` に相当する。付けると固まらず例外で返る。まず単数値、次にタプル。
 
 ```bash
 # 単数値 2 秒。ReadTimeout で返る（約 2 秒で終わる）
@@ -156,7 +156,7 @@ time python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1
 例外の読み方:
 
 - `ReadTimeout: Read timed out. (read timeout=2)` → 接続はできたが本文が来ない。`/slow` 型
-- `ConnectTimeout` / `Connection refused` → 相手が居ない・届かない。殺した後の `delay.py` や閉じたポート（例: `http://127.0.0.1:9/`）で出る。`timeout=(1, 5)` の connect 側が効く
+- `ConnectTimeout` / `Connection refused` → 相手が居ない・届かない。停止後の `delay.py` や閉じたポート（例: `http://127.0.0.1:9/`）で出る。`timeout=(1, 5)` の connect 側が効く
 - `timeout=2` と `timeout=(1, 2)` の差が出るのは connect が遅いときだけ。localhost 再現ではどちらも read 側で切れる。差を見たいときは閉じたポートと `/slow` を両方叩く
 
 ```bash
@@ -232,7 +232,7 @@ session.post(url, data=..., timeout=POST_TIMEOUT)
 
 ## 6. 同一ホストへの上限を確認する（絞りすぎない）
 
-リスト 9 の `MaxIdleConns / MaxIdleConnsPerHost / IdleConnTimeout` 相当。Python では `HTTPAdapter` の 3 点を見る。
+リスト 9 の `MaxIdleConns / MaxIdleConnsPerHost / IdleConnTimeout` に相当する話。Python では `HTTPAdapter` の 3 点を見る。
 
 ```bash
 grep -rn 'pool_maxsize\|pool_connections\|HTTPAdapter\|pool_block' \
@@ -247,10 +247,10 @@ python3 -c "from requests.adapters import HTTPAdapter; import inspect; print(ins
 # (pool_connections=10, pool_maxsize=10, max_retries=0, pool_block=False)
 ```
 
-意味:
+各項目の意味:
 
-- `pool_connections=10` … ホスト種別数（リスト 9 の `MaxIdleConns` 寄り）。まず触らない
-- `pool_maxsize=10` … ホスト毎の保持数（リスト 9 の `MaxIdleConnsPerHost` 寄り）。まず 10〜20
+- `pool_connections=10` … ホスト種別数（リスト 9 の `MaxIdleConns` に相当）。まず触らない
+- `pool_maxsize=10` … ホスト毎の保持数（リスト 9 の `MaxIdleConnsPerHost` に相当）。まず 10〜20
 - `pool_block=False` … 上限を超えたら待たずに新規接続。`True` にすると上限で待つ行列になる
 
 振る舞いの差はスレッド 10 本で見る。相手は速いサーバ（0.5 秒）でよい:
@@ -302,8 +302,8 @@ kill $(cat /tmp/timeout/fast.pid)
 読み方:
 
 - 最初から `maxsize=1` や `pool_block=True` に絞らない。p99 が跳ねたら上限が犯人。戻してから次へ
-- `too many open files` が出たらプールのせいにしない。`ulimit -n` / `ss -s` を見る（[0050 §6](0050-http-client.md#6-同一ホストへの上限を確認する絞りすぎない) と同じ）
-- 方針は `pool_maxsize=20` から入り、`oha -c 50` で p99 が壊れない範囲だけ振る
+- `too many open files` が出たらプールの数が原因と決めつけない。`ulimit -n` / `ss -s` を見る（[0050 §6](0050-http-client.md#6-同一ホストへの上限を確認する絞りすぎない) と同じ）
+- 方針は `pool_maxsize=20` から始める。`oha -c 50` で p99 が壊れない範囲だけ振る
 
 ```python
 # 方針: モジュール先頭で 1 個。リクエスト毎に Session() を作らない
@@ -326,7 +326,7 @@ session.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=20))
 
 合成で掴んだら、自分の 1 箇所に当てる。まとめて全部は変えない。
 
-1. `Session` はモジュール先頭で 1 個（gunicorn はワーカー別プロセスなのでワーカー毎に 1 個が上限）。リクエスト毎に `Session()` を作らない
+1. `Session` はモジュール先頭で 1 個作る（gunicorn はワーカー別プロセスなのでワーカー毎に 1 個になる）。リクエスト毎に `Session()` を作らない
 2. `timeout` は全部に付ける。GET / POST で値を分ける（5.）
 3. 受けたら `content` を読んでから閉じる（[0050 §3](0050-http-client.md#3-body-を読み切って-close-する)）。読まずに捨てるとプールに戻らない
 
@@ -374,7 +374,7 @@ grep -rn 'proxy_.*_timeout' /etc/nginx/sites-enabled/ | head
 # アプリの read 5 秒に対して nginx の read 60 秒なら、アプリ側が先に切れる。正しい順序
 ```
 
-変えたら restart / reload して `curl` 2 本。短くしすぎると `fail` になる。そのときは値を戻す:
+変えたら restart / reload して `curl` 2 本を確認する。短くしすぎると `fail` になる。そのときは値を戻す:
 
 ```bash
 sudo systemctl restart isu-python.service
@@ -387,11 +387,11 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 
 - `Session` が 1 個か（`grep -c 'Session()'` が 1）
 - `timeout` 無しの行が 0 か
-- `curl` 2 本が 200 で、`journalctl` に例外が出ていない
+- `curl` 2 本が 200 になること。`journalctl` に例外が出ていないこと
 
 ## 8. 公式ベンチで判定する
 
-2.〜7. のどれか 1 手を残し、他は戻した状態で公式ベンチ 1 本。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。タイムアウト自体は平常時の点数を上げない。判定は「固まらないこと」と「`fail` が 0」。
+2.〜7. のどれか 1 手を残し、他は戻した状態にして公式ベンチを 1 本回す。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。タイムアウト自体は平常時の点数を上げない。判定は「固まらないこと」と「`fail` が 0」。
 
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
@@ -415,7 +415,7 @@ kill $(cat /tmp/timeout/fast.pid) 2>/dev/null || true
 sudo ss -lntp | grep 1808 || echo 'synthetic servers stopped'
 ```
 
-戻し方は変えた層だけ:
+戻し方は変えた層だけやる:
 
 ```bash
 # Python を戻すとき（Session / timeout の差分だけ消す）
@@ -435,9 +435,9 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 
 ### タイムアウトで fail が出る
 
-- 短くしすぎ。まず GET `(2, 3)` / POST `(3, 10)` に戻す
+- 短くしすぎている。まず GET `(2, 3)` / POST `(3, 10)` に戻す
 - `session.get(url, timeout=...)` と `urllib` の既定混在になっていないか。`grep -v timeout` で洗い出す
-- 相手の p99 がタイムアウトに張り付いているなら、こっちを延ばさず相手（DB / 上流）を直す。alp と slp に戻る
+- 相手の p99 がタイムアウトに張り付いているなら、こちらの値を延ばさず相手（DB / 上流）を直す。alp と slp に戻る
 
 ### 上限を絞ったら遅くなる
 
@@ -455,7 +455,7 @@ sudo journalctl -u isu-python.service -n 40 --no-pager | grep -i -E 'ModuleNotFo
 ```
 
 - `ModuleNotFoundError: requests` → `uv add requests` 漏れか `uv sync` 漏れ
-- `/tmp` の合成では system の `pip` でよい。`.venv` と混ぜない
+- `/tmp` の合成では system python の `pip` でよい。`.venv` と混ぜない
 
 ### 合成サーバが残っている
 

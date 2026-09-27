@@ -26,7 +26,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=app-baseline" >> ~/bench-not
 
 ## 1. 対象を 1 本に決める（alp + slp + pt-query-digest）
 
-変える前に、3 つの道具で同じ犯人を指す。指さないままコードを触らない。
+変える前に、3 つの道具で同じ犯人を特定する。特定しないままコードを触らない。
 
 ```bash
 MATCH='/posts/[0-9]+,/image/[0-9]+,/@[a-zA-Z0-9_]+'
@@ -67,7 +67,7 @@ grep -rn 'SELECT.*FROM posts\|SELECT.*FROM users\|SELECT.*FROM comments' \
 
 ### 観察すること
 
-- 自分の 1 手が「2. / 3. / 5.」のどれか言える（2 つ同時に入らない）
+- 自分の 1 手が「2. / 3. / 5.」のどれかを言える（2 つ同時に入らない）
 - alp の Sum 上位と slp / pt-query-digest の先頭行が同じ犯人を指している
 - `long_query_time` を 1 に戻した（`df -h /` でディスクに余裕がある）
 
@@ -75,7 +75,7 @@ grep -rn 'SELECT.*FROM posts\|SELECT.*FROM users\|SELECT.*FROM comments' \
 
 `/image` の素体は MySQL の `posts.imgdata`（MEDIUMBLOB）。毎回 BLOB を読むと重い。読む側をファイルに寄せる。ただし正本は MySQL のまま残す。ファイルだけを正本にしない。
 
-線引き（[0040 §1](0040-cache.md#1-正本は-mysql-と-ebs)、[0020 §10](0020-split.md#10-ベンチ中の書き込みは再起動後も残す) と同じ）:
+線引き（[0040 §1](0040-cache.md#1-正本は-mysql-と-ebs)、[0020 §10](0020-split-3.md#10-ベンチ中の書き込みは再起動後も残す) と同じ）:
 
 - `posts` / `users` / `comments` の正本は MySQL。投稿の唯一のコピーをファイルにも memcached にもしない
 - 画像ファイルは **EBS 上**（`/home/isucon/private_isu/webapp/public/image/` など）。`tmpfs`、`/dev/shm`、`/tmp` にしない
@@ -134,8 +134,8 @@ sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH" |
 echo "$(date -Iseconds)  score=  pass=  fail=  note=image-file" >> ~/bench-notes/scores.txt
 ```
 
-- slp の `imgdata` 系の Count が落ち、alp の `/image` Sum が落ちたら当たり
-- 再起動試験: `sudo reboot` 後に画像と投稿が残ること（[0040 §1](0040-cache.md#1-正本は-mysql-と-ebs) と同じ）。消えたらファイルが正本になっているか `tmpfs` 置き
+- slp の `imgdata` 系の Count が落ち、alp の `/image` Sum が落ちたら成功
+- 再起動試験: `sudo reboot` 後に画像と投稿が残ること（[0040 §1](0040-cache.md#1-正本は-mysql-と-ebs) と同じ）。消えたらファイルが正本になっているか、`tmpfs` 置きを疑う
 - ファイル化が通ったら [0070](0070-static-cache.md) の `expires` + `304` を重ねられる。ただし同時に入れて比べない。2. の点数を先に取る
 
 戻す:
@@ -209,7 +209,7 @@ N+1 のまとめ（インデックスで比が数倍以内になっても Count 
 echo "$(date -Iseconds)  score=  pass=  fail=  note=index comments(post_id,created_at)" >> ~/bench-notes/scores.txt
 ```
 
-効かなければ `DROP INDEX idx_comments_post_created ON comments`。次の 1 本へ。再起動で初期化 SQL が DB を作り直す回は、終盤にもう一度 `SHOW INDEX`（[0030-ops.md](../010_common/0030-ops.md#終盤チェック1700-以降)）。
+効かなければ `DROP INDEX idx_comments_post_created ON comments`。次の 1 本へ。再起動で初期化 SQL が DB を作り直す構成では、終盤にもう一度 `SHOW INDEX` で確認する（[0030-ops.md](../010_common/0030-ops.md#終盤チェック1700-以降)）。
 
 ### 観察すること
 
@@ -240,6 +240,8 @@ sudo journalctl -u isu-python.service --grep='Too many open files' --no-pager | 
 ## 5. `ADMIN PREPARE` が最上位ならプリペアドを使わない形に変える
 
 `pt-query-digest` の先頭が `ADMIN PREPARE ...` のとき、犯人はインデックスではなく往復回数。サーバ側プリペアドステートメントは 1 クエリに 2 往復（PREPARE + EXECUTE）かかる。件数が多いとその倍増分が支配的になる。検知したら自分の 1 箇所をクライアント側実行に変える。
+
+?> 出るかどうかはドライバで決まる。素体の Python（`MySQLdb` / mysqlclient）はクライアント側エスケープでサーバ `PREPARE` を出さない。Python のまま本節が出ないのは正常で、飛ばしてよい。素体の Go（go-sql-driver/mysql + sqlx、既定 `interpolateParams=false`）はサーバ側プリペアを使うので、Go 運用の回は出うる。無効化は `interpolateParams=true`（クライアント側埋め）に寄せる。
 
 検知（1. の続き。`--limit` を小さくして先頭だけ見る）:
 
@@ -296,7 +298,7 @@ sudo mysql -e "SET GLOBAL long_query_time = 1"
 echo "$(date -Iseconds)  score=  pass=  fail=  note=no-prepare" >> ~/bench-notes/scores.txt
 ```
 
-- `ADMIN PREPARE` の行が消えた（または Rank 外に落ちた）→ 当たり。そのまま 6. の判定へ
+- `ADMIN PREPARE` の行が消えた（または Rank 外に落ちた）→ 成功。そのまま 6. の判定へ
 - 残る → 変えた箇所がホットな経路ではない。戻して別の 1 箇所へ（全体フラグに広げない）
 
 戻す:
@@ -310,12 +312,12 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 ### 観察すること
 
 - 変える前後で `pt-query-digest` 先頭行の `ADMIN PREPARE` の有無を言える
-- 変えたのは 1 箇所だけ（全体フラグ＋クエリ書き換えの同時入れをしていない）
+- 変えたのは 1 箇所だけ（全体フラグとクエリ書き換えを同時に入れていない）
 - エスケープを自前で組み立てていない（`fail` や文字化けが出たらここを疑う）
 
 ## 6. 公式ベンチで判定する
 
-2.・3.・5. のどれか 1 手だけ残し、他は戻した状態で公式ベンチ 1 本。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
+2.・3.・5. のどれか 1 手だけ残し、他は戻した状態にして公式ベンチを 1 本回す。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
 
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
@@ -342,11 +344,13 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=app-image-file" >> ~/bench-n
 - `fail` が 0。画像の更新漏れ・他人表示は 2. の保存漏れ、文字化け・500 は 5. のエスケープ崩れを疑う
 - `long_query_time` を 1 に戻した（`df -h /` で余裕がある）
 
+0090 まで終わったら終盤に入る。ログ停止と配布は [0030-ops.md](../010_common/0030-ops.md)。残した変更は `backup/s1` に積み、feature ブランチでやり取りする（流儀は [0020](0020-split-1.md) と同じ）。
+
 ## 7. トラブルシュート
 
 ### 画像が出ない / 403 / 新投稿の画像が出ない
 
-- 403 → 権限。`isucon:www-data`、`a+rX`、`/home/isucon` からの `o+x` の順（[0020 §静的](0020-split.md#静的ファイルと画像) と同じ）
+- 403 → 権限。`isucon:www-data`、`a+rX`、`/home/isucon` からの `o+x` の順（[0020 §静的](0020-split-2.md#静的ファイルと画像) と同じ）
 - 旧画像が出て新画像が出ない → 書き込み経路の保存漏れ。読み側の TTL やキャッシュを疑わない
 - 再起動で消える → `tmpfs` / `/dev/shm` / `/tmp` 置きか、ファイルだけが正本。EBS + DB 残しに戻す
 

@@ -7,9 +7,9 @@
 - EC2 は 1 台（[0010-env.md](0010-env.md) で `webapp_instance_count = 1`）
 - 実装は [webapp-setup/python.md](../010_common/webapp-setup/python.md)（`isu-python.service`）
 - 0030 の計測サイクルを回せること。bench-prep と `scores.txt` はそちらと同じ
-- memcached はストックでセッション用に入っている（`memcached.service`）。共有化は [0020-split.md](0020-split.md)。ここでは localhost を使う
+- memcached はストックでセッション用に入っている（`memcached.service`）。共有化は [0020-split-1.md](0020-split-1.md)。ここでは localhost を使う
 
-順番: 正本の線引き → 測り方の固定（2. memcached / 3. nginx）→ アプリ層 1 本 → nginx 1 本 → Cache-Control（6.）。まとめて入れない。1 手ごとに公式ベンチ。`fail` が 0 でない点数は比べない。
+順番: 正本の線引き → 測り方の固定（2. memcached / 3. nginx）→ アプリ層 1 本 → nginx 1 本 → Cache-Control（6.）。まとめて入れない。1 手ごとに公式ベンチ。`fail` が 0 でない点数は比べない。出口は [0050-http-client.md](0050-http-client.md)。条件付きの深掘りは [0070-static-cache.md](0070-static-cache.md)。
 
 点数は `~/bench-notes/scores.txt` に 1 行。ヒット率も一緒に書く:
 
@@ -32,7 +32,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  memc_hit=  nginx_hit=  note=cache
 - nginx の `proxy_cache` だけを正本にしない
 - ベンチ中に書いたデータは再起動後も読めること。ISUCON14 ではメモリ上のキャッシュが原因で上位（トップ 8）のチームが失格になった
 
-再起動試験は [0020-split.md](0020-split.md#10-ベンチ中の書き込みは再起動後も残す) と同じ。1 台でもやる:
+再起動試験は [0020-split-3.md](0020-split-3.md#10-ベンチ中の書き込みは再起動後も残す) と同じ。1 台でもやる:
 
 ```bash
 mysql -uisuconp -pisuconp isuconp -e "SELECT COUNT(*) FROM posts;"
@@ -47,7 +47,7 @@ mysql -uisuconp -pisuconp isuconp -e "SELECT COUNT(*) FROM posts;"
 
 ## 2. memcached: `get_hits` / `get_misses` でヒット率を出す
 
-アプリ層の答えは `stats` の 2 行。`hits / (hits + misses)` がヒット率。
+アプリ層の判定材料は `stats` の 2 行。`hits / (hits + misses)` がヒット率。
 
 ### 見る項目
 
@@ -63,7 +63,7 @@ echo stats | nc -w 1 127.0.0.1 11211 | grep -E '^(STAT) (get_hits|get_misses|cur
 | `evictions` | メモリ不足で追い出された数 | 増え続けるならキーか TTL を減らす |
 | `bytes` / `limit_maxbytes` | 使用量 / 上限（既定 `-m 64`） | 上限に張り付く前に evictions が動く |
 
-アプリがどこを見ているか（アドレス違いが一番多い）:
+アプリがどこを見ているか（アドレス違いのミスが一番多い）:
 
 ```bash
 cat /home/isucon/env.sh
@@ -130,7 +130,7 @@ head -3 /var/log/nginx/access.log
 # 例: ...  cache:HIT ... / cache:MISS ... / cache:- ...
 ```
 
-`cache:-` しか出ないときは 2 通り。アプリが `X-Cache` を返していないか、nginx が書いていない。どちらか切り分ける:
+`cache:-` しか出ないときは原因が 2 通りある。アプリが `X-Cache` を返していないか、nginx が書いていないか。どちらか切り分ける:
 
 ```bash
 grep -o 'cache:[A-Z-]*' /var/log/nginx/access.log | sort | uniq -c | sort -nr | head
@@ -139,7 +139,7 @@ grep -o 'cache:[A-Z-]*' /var/log/nginx/access.log | sort | uniq -c | sort -nr | 
 
 ### 1 リクエストの HIT / MISS を見える化（X-Cache）
 
-最小の出し方。nginx 側で `add_header X-Cache $upstream_cache_status always` を足す（site conf の対象 location へ。全体に足さない）:
+一番小さい出し方は、nginx 側で `add_header X-Cache $upstream_cache_status always` を足すこと（site conf の対象 location へ。全体に足さない）:
 
 ```nginx
 # nginx 側で足す例（site conf の location へ）
@@ -192,13 +192,13 @@ sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH"
 
 ## 4. アプリ層 memcached に 1 本入れてヒット率で評価する
 
-2. の測り方を使って、ホットな読みを 1 本だけ寄せる。
+2. の測り方を使って、ホットな読み 1 本だけをキャッシュに寄せる。
 
-順番: 1 クエリ選ぶ → get/set → 破棄 → ベンチ → ヒット率判定 → 戻せること。
+順番は 1 クエリ選ぶ → get/set → 破棄 → ベンチ → ヒット率判定 → 戻せること、の順。
 
 ### 1 つ選ぶ
 
-alp の **Count も Sum も大きい** パスに紐づく SQL を 1 本だけにする:
+alp の **Count も Sum も大きい** パスに紐づく SQL を 1 本だけ選ぶ:
 
 ```bash
 MATCH='/posts/[0-9]+,/image/[0-9]+,/@[a-zA-Z0-9_]+'
@@ -251,7 +251,7 @@ diff -u /tmp/memc-before.txt /tmp/memc-after.txt || true
 echo "$(date -Iseconds)  score=  pass=  fail=  memc_hit=  note=memcached-timeline-ttl60" >> ~/bench-notes/scores.txt
 ```
 
-効かなければ残さない。次の 1 本へ:
+効かなければ残さない。戻して次の 1 本へ:
 
 ```bash
 # バックアップから戻すとき
@@ -286,7 +286,7 @@ sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH"
 # /image が Sum 上位なら候補。POST や /login が上位なら nginx の仕事ではない
 ```
 
-今の nginx を見る（パスは自分の `nginx -t` に置き換える）:
+今の nginx を見る（site conf のパスは自分の `nginx -t` 結果に置き換える）:
 
 ```bash
 sudo nginx -t
@@ -295,7 +295,7 @@ cat /etc/nginx/sites-enabled/isucon 2>/dev/null || cat /etc/nginx/conf.d/*.conf 
 
 ### 1 箇所だけキャッシュする
 
-例（`/image` だけ。静的とタイムラインは次回）。`proxy_cache_path` は 1 行だけ足す:
+例として `/image` だけやる（静的とタイムラインは次回）。`proxy_cache_path` は 1 行だけ足す:
 
 ```nginx
 proxy_cache_path /var/cache/nginx/image levels=1:2 keys_zone=image:10m max_size=1g inactive=60m use_temp_path=off;
@@ -348,7 +348,7 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/image/1
 mysql -uisuconp -pisuconp isuconp -e "SELECT COUNT(*) FROM posts;"
 ```
 
-戻すときは location の数行だけ消して reload。`proxy_cache_path` のディレクトリは残してよい:
+戻すときは location に足した数行だけ消して reload する。`proxy_cache_path` のディレクトリは残してよい:
 
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
@@ -438,7 +438,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'If-Modified-Since: Wed, 01 Jan 2025
 # 304 が返れば再検証 OK。ずっと 200 ならアプリが条件付き GET に対応していない
 ```
 
-ブラウザで見る（`curl` はキャッシュしないので、来なさはこっちで確認）:
+ブラウザで見る（`curl` はキャッシュしないので、来なさはこちらで確認）:
 
 1. DevTools → Network を開き、`Disable cache` のチェックを外す
 2. `/image/1` をリロード 2 回
@@ -455,7 +455,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=cache-control-image-60" >> ~
 
 注意: ベンチマーカーはブラウザキャッシュをエミュレートしないことが多い。点数ではなく `curl` + ログの前後差で判定する。`proxy_cache` との関係も独立で、`Cache-Control: private` / `no-store` を付けると `proxy_cache` が効かなくなることがある（`proxy_ignore_headers` を触る前に、対象を匿名 GET だけに狭める）。
 
-戻すときは付けた 1 行（Flask の header か nginx の 2 行）だけ消して restart / reload:
+戻すときは付けた箇所（Flask の 1 行か nginx の 2 行）だけ消して restart / reload する:
 
 ```bash
 # Flask を戻したら
@@ -486,7 +486,7 @@ curl -sI http://127.0.0.1/image/1 | grep -i 'cache-control' || echo 'reverted (n
 
 - ずっと MISS: キーに時刻や Cookie が入っている。`proxy_cache_key` を固定形に戻す。`proxy_no_cache` が広すぎないか
 - ずっと BYPASS: session 系 Cookie を全部避けている。対象を匿名 GET だけに狭めたか見る
-- `cache:-` しか出ない: `X-Cache` 配線か `log_format`。3. の `curl -sI` で HIT することを先に確認する
+- `cache:-` しか出ない: `X-Cache` 配線か `log_format` の問題。3. の手順で `curl -sI` が HIT することを先に確認する
 - `fail` が出る: 認証付きをキャッシュしている。`proxy_no_cache` / `bypass` に session 系 Cookie を足して、対象を匿名 GET だけにする
 - ディスクが膨らむ: `max_size` と `inactive` を見る。`du -sh /var/cache/nginx` と `df -h /`
 

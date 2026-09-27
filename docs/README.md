@@ -10,7 +10,7 @@
 ## どれを開くか
 
 - **AWS 1 台** — [040_practice/0010-env.md](040_practice/0010-env.md) で `webapp_instance_count = 1` → [010_common/0010-setup.md](010_common/0010-setup.md) → [040_practice/0030-measure.md](040_practice/0030-measure.md)
-- **AWS 複数台** — 同じ [040_practice/0010-env.md](040_practice/0010-env.md) で `webapp_instance_count = 3` → [040_practice/0020-split.md](040_practice/0020-split.md)
+- **AWS 複数台** — 同じ [040_practice/0010-env.md](040_practice/0010-env.md) で `webapp_instance_count = 3` → [040_practice/0020-split.md](040_practice/0020-split-1.md)
 - **練習問題** — 立てたあとに手を動かすドリル。[040_practice/](040_practice/README.md) に足していく
 - **キャッシュ** — 1 台で計測を回せるようになったら [040_practice/0040-cache.md](040_practice/0040-cache.md)。[0030-measure.md](040_practice/0030-measure.md) の続きで memcached と nginx を 1 手ずつ
 - **HTTPクライアント** — 同一ホストへのコネクションを使い回すなら [040_practice/0050-http-client.md](040_practice/0050-http-client.md)。タイムアウトと上限を 1 手ずつ

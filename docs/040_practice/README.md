@@ -5,7 +5,7 @@
 | 番号 | ファイル | 内容 |
 | --- | --- | --- |
 | 0010 | [0010-env.md](0010-env.md) | 練習用 EC2 を立てる。1 台は `webapp_instance_count = 1`、複数台は `3` |
-| 0020 | [0020-split.md](0020-split.md) | 役割を分ける（s1 nginx+unix / s2 HTTP / s3 MySQL） |
+| 0020 | [0020-split-1.md](0020-split-1.md)・[0020-split-2.md](0020-split-2.md)・[0020-split-3.md](0020-split-3.md) | 役割を分ける（s1 nginx+unix / s2 HTTP / s3 MySQL）。前半§1–§7・中盤§8・後半§9–§12 |
 | 0030 | [0030-measure.md](0030-measure.md) | 1 台で計測サイクルを回す |
 | 0040 | [0040-cache.md](0040-cache.md) | 0030 の続き。1 台で memcached / nginx を 1 手ずつ |
 | 0050 | [0050-http-client.md](0050-http-client.md) | 同一ホストへのコネクションを使い回す。タイムアウトと上限を 1 手ずつ |

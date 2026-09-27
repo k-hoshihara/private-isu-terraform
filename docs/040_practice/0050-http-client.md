@@ -13,9 +13,9 @@
 - EC2 は 1 台（[0010-env.md](0010-env.md) で `webapp_instance_count = 1`）
 - 実装は Python でも Go でもよい。既定は [webapp-setup/python.md](../010_common/webapp-setup/python.md)（`isu-python.service`）。Go で試すなら [webapp-setup/go.md](../010_common/webapp-setup/go.md)（`isu-go.service`）
 - [0030-measure.md](0030-measure.md) の計測サイクルを回せること。bench-prep と `scores.txt` はそちらと同じ
-- VPC 内は HTTP（:80 / :8080）。TLS の差はここでは出ない。TLS では効果が数倍になる旨だけ押さえる
+- VPC 内は HTTP（:80 / :8080）。TLS の差はここでは出ない。TLS では効果が数倍になることだけ押さえる
 
-順番: 探す（1.）→ 合成再現で差を見る（2.〜3.）→ nginx の使い回し（4.）→ タイムアウト（5.）→ 上限（6.）→ 公式ベンチ判定（7.）。1 手ずつ。`fail` が 0 でない点数は比べない。
+順番: 探す（1.）→ 合成再現で差を見る（2.〜3.）→ nginx の使い回し（4.）→ タイムアウト（5.）→ 上限（6.）→ 公式ベンチ判定（7.）。1 手ずつ。`fail` が 0 でない点数は比べない。出口は [0060-timeout.md](0060-timeout.md)。
 
 点数は `~/bench-notes/scores.txt` に 1 行。`tw`（TIME-WAIT 数）も一緒に書く:
 
@@ -31,7 +31,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  tw=  oha_p99=  note=http-baseline
 
 ## 1. どこで HTTP を投げているか探す
 
-直す前に、自分のアプリがどこで外へ HTTP を投げているか決める。private-isu の素体は DB / memcached 直結で、外への HTTP は無いことが多い。そのときは 2.〜3. の合成再現で型を掴み、4. の nginx upstream を本番の 1 手にする。
+直す前に、自分のアプリがどこで外へ HTTP を投げているか確かめる。private-isu の素体は DB / memcached 直結で、外への HTTP は無いことが多い。そのときは 2.〜3. の合成再現で型を掴み、4. の nginx upstream を本番の 1 手にする。
 
 ```bash
 grep -rn 'http\.Client\|http\.Get\|http\.Post\|Transport{' \
@@ -46,18 +46,18 @@ grep -rn 'proxy_pass' /etc/nginx/sites-enabled/ | head -20
 - Go で `http.Client{}` をリクエスト毎に作っている → 2. で 1 個にまとめる
 - Go で `http.Get` / `http.Post` だけ → `http.DefaultClient` の使い回しなので接続は再利用されるが、タイムアウトが無い。5. で自前 client に変える
 - Python で `requests.get` を毎回呼ぶ → `Session` にまとめる（2.）
-- `proxy_pass http://...` → 4. の nginx upstream が HTTP クライアント。アプリ側に HTTP 呼び出しが無くてもここは必ずある
-- どこにも無い → 2.〜3. は合成スクリプトで練習し、4. を本番適用にする
+- `proxy_pass http://...` → 4. の nginx upstream が HTTP クライアントの役割をしている。アプリ側に HTTP 呼び出しが無くてもここは必ずある
+- どこにも無い → 2.〜3. は合成スクリプトで練習し、4. を本番の 1 手にする
 
 ### 観察すること
 
-- 自分の 1 手が「アプリの client」「nginx の upstream」のどちらか言える
-- 対象のホスト（`127.0.0.1:8080` なのか `s2:8080` なのか）を言える。分割後は [0020-split.md](0020-split.md) の `APP_PRIV`
+- 自分の 1 手が「アプリの client」「nginx の upstream」のどちらかを言える
+- 対象のホスト（`127.0.0.1:8080` なのか `s2:8080` なのか）を言える。分割後は [0020-split-1.md](0020-split-1.md) の `APP_PRIV`
 - 見つからなければ合成再現から入る（無理にアプリをいじらない）
 
 ## 2. 合成再現で差を見る（使い回す vs 使い捨て）
 
-アプリを変える前に、`/tmp` の小さなスクリプトで差を出す。相手は自分のアプリ（`:8080` 直）でよい。ベンチマーカーは使わない。
+アプリを変える前に、`/tmp` の小さなスクリプトで差を出す。相手は自分のアプリ（`:8080` に直結）でよい。ベンチマーカーは使わない。
 
 ### 2a. コネクション数の見方を固定する
 
@@ -166,7 +166,7 @@ python3 /tmp/reuse_py.py noreuse 200
 echo "--- after noreuse ---"; ss -tan 'state time-wait' | wc -l
 ```
 
-`requests` を使っているアプリなら対応はこうなる（コピペ用の完成品ではなく方針）。`Session` をプロセス全体で 1 個（gunicorn はワーカー別プロセスなのでワーカー毎に 1 個が上限）。リクエスト毎に `Session()` を作らない:
+`requests` を使っているアプリなら対応はこうなる（コピペ用の完成品ではなく方針）。`Session` をプロセス全体で 1 個作る（gunicorn はワーカー別プロセスなのでワーカー毎に 1 個になる）。リクエスト毎に `Session()` を作らない:
 
 ```python
 # 方針: モジュール先頭で 1 個。リクエスト毎に作らない
@@ -187,9 +187,9 @@ session.mount("https://", HTTPAdapter(pool_connections=20, pool_maxsize=20))
 
 ## 3. Body を読み切って Close する
 
-Go は `Body.Close()` を忘れるか、読まずに `Close` すると、そのコネクションは再利用されず切断される。2b. の `io.Copy(io.Discard, ...)` がその行。Python（`requests` / `http.client`）も `read()` / `content` を読まずに捨てるとプールに戻らない。
+Go は `Body.Close()` を忘れるか、読まずに `Close` すると、そのコネクションは再利用されず切断される。2b. の `io.Copy(io.Discard, ...)` が読み切りの行に当たる。Python（`requests` / `http.client`）も `read()` / `content` を読まずに捨てるとプールに戻らない。
 
-確認はコード目視 + `ss`。形だけ `defer Close()` しても読んでいなければ `time-wait` は減らない。
+確認はコードの目視と `ss` の両方でやる。形だけ `defer Close()` しても読んでいなければ `time-wait` は減らない。
 
 ```bash
 # Go: 読み切り＋Close が揃っているか
@@ -256,7 +256,7 @@ server {
 注意:
 
 - `proxy_http_version 1.1;` と `proxy_set_header Connection "";` が無いと keepalive にならない（1.0 のまま閉じる）
-- `keepalive 32;` はまず 32。大きくする前に効果を見る。分割後は `server ${APP_PRIV}:8080;` に変える（[0020-split.md](0020-split.md) の変数）
+- `keepalive` はまず 32 にする。大きくする前に効果を見る。分割後は `server ${APP_PRIV}:8080;` に変える（[0020-split-1.md](0020-split-1.md) の変数）
 - s1 が unix socket（`0020-split` の light）の箇所は対象外。TCP の heavy 側だけ
 
 ```bash
@@ -266,7 +266,7 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/login
 sudo journalctl -u nginx -n 20 --no-pager || sudo tail -20 /var/log/nginx/error.log
 ```
 
-効き目は `oha` と `ss` で見る（bench-prep でログを回してから）:
+効果は `oha` と `ss` で見る（bench-prep でログを回してから）:
 
 ```bash
 echo "--- before keepalive ---"; ss -tan 'state time-wait' | wc -l
@@ -275,17 +275,17 @@ echo "--- after ---"; ss -tan 'state time-wait' | wc -l
 sudo cat /var/log/nginx/access.log | tail -3
 ```
 
-`time-wait` が減り、`oha` の p99 が下がれば当たり。変わらなければ `proxy_http_version` / `Connection` の付け場所（`location /` の内側か）を見る。
+`time-wait` が減り、`oha` の p99 が下がれば成功。変わらなければ `proxy_http_version` / `Connection` の付け場所（`location /` の内側か）を見る。
 
 ### 観察すること
 
-- `nginx -t` が通り、`curl` 2 本が 200
+- `nginx -t` が通り、`curl` 2 本が 200 になること
 - `oha` の前後で `time-wait` 増分と p99 を言える
 - 分割構成なら `APP_PRIV` 側の `:8080` への `established` が張りっぱなしになる
 
 ## 5. タイムアウトを付ける（DefaultClient を本番で使わない）
 
-使い回しができたら、次は固まらないこと。`http.Get`（＝ `http.DefaultClient`）はタイムアウトが無いので、相手が詰まるとこっちのワーカーまで固まる。本番では自前 client に変える。
+使い回しができたら、次は固まらないようにすること。`http.Get`（＝ `http.DefaultClient`）はタイムアウトが無いので、相手が詰まるとこちらのワーカーまで固まる。本番では自前 client に変える。
 
 Go の出発点（自分の client の 1 箇所だけ）:
 
@@ -322,7 +322,7 @@ grep -rn 'timeout' /home/isucon/private_isu/webapp/python --include='*.py' | hea
 grep -rn 'proxy_.*_timeout\|keepalive_timeout' /etc/nginx/sites-enabled/ | head
 ```
 
-変えたら restart / reload して `curl` と `oha` が `fail` しないこと。タイムアウトを短くしすぎると `fail` になる。そのときは値を戻す（リトライや上限を足さない）:
+変えたら restart / reload し、`curl` と `oha` で `fail` が出ないことを確認する。タイムアウトを短くしすぎると `fail` になる。そのときは値を戻す（リトライや上限を足さない）:
 
 ```bash
 # Go を変えたら
@@ -338,11 +338,11 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 
 - `DefaultClient` / `timeout` 無しの箇所が残っていない（`grep` で 0）
 - 短くしても `oha` が `fail` しない値に落ち着いた
-- p99 が `ResponseHeaderTimeout` / `read timeout` に張り付いていない（張り付いたら相手側の問題で、こっちの値を延ばさない）
+- p99 が `ResponseHeaderTimeout` / `read timeout` に張り付いていない（張り付いたら相手側の問題で、こちらの値は延ばさない）
 
 ## 6. 同一ホストへの上限を確認する（絞りすぎない）
 
-大量リクエストでは「使い回す数」の上限が効く。多すぎると相手を殴り、少なすぎると自分が詰まる。変えるのは 1 箇所だけ。
+大量リクエストでは「使い回す数」の上限が効く。多すぎると相手に負荷をかけ、少なすぎると自分が詰まる。変えるのは 1 箇所だけ。
 
 目安（まずここから。ベンチで振る）:
 
@@ -364,7 +364,7 @@ grep -rn 'keepalive' /etc/nginx/sites-enabled/ | head
 ulimit -n; ss -s | head -10
 ```
 
-負荷をかけて確認（`oha -c` を上げる。ベンチマーカーの前にこっち）:
+負荷をかけて確認する（`oha -c` を上げる。ベンチマーカーの前にやる）:
 
 ```bash
 oha -n 2000 -c 50 --no-tui http://127.0.0.1/
@@ -373,7 +373,7 @@ ss -tan state established '( dport = :8080 or sport = :8080 )' | wc -l
 dmesg | tail -5
 ```
 
-- `MaxConnsPerHost` や `pool_maxsize` を一気に 4 とかまで絞らない。p99 が跳ねたら上限が犯人。戻してから次へ
+- `MaxConnsPerHost` や `pool_maxsize` をいきなり 4 などまで絞らない。p99 が跳ねたら上限が犯人。戻してから次へ
 - `too many open files` が出たらアプリの上限ではなく `ulimit -n` / `worker_rlimit_nofile`。アプリの値を絞る前に `ss -s` と `dmesg` を見る
 - TLS（HTTPS）の相手なら、コネクション数＝ハンドシェイク数。使い回し（2.）と上限（6.）はセットで見る
 
@@ -385,7 +385,7 @@ dmesg | tail -5
 
 ## 7. 公式ベンチで判定する
 
-2.〜6. のどれか 1 手を残し、他は戻した状態で公式ベンチ 1 本。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
+2.〜6. のどれか 1 手を残し、他は戻した状態にして公式ベンチを 1 本回す。bench-prep は [0030-measure.md](0030-measure.md#1-ベースライン) と同じ `mv` + `reopen` / `flush-logs`。
 
 ```bash
 TS=$(date +%Y%m%d%H%M%S)
@@ -412,7 +412,7 @@ MATCH='/posts/[0-9]+,/image/[0-9]+,/@[a-zA-Z0-9_]+'
 sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH" | head -20
 ```
 
-効かなければ残さない。`scores.txt` に 1 行残して戻す。戻し方は変えた層だけ:
+効かなければ残さない。`scores.txt` に 1 行残して戻す。戻し方は変えた層だけやる:
 
 ```bash
 # nginx を戻すとき（drop-in や site conf の keepalive 3 行だけ消す）
@@ -425,7 +425,7 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 ### 観察すること
 
 - `tw_before → tw_after` の増分がベースラインより小さい
-- alp の Sum が落ちたか、落ちないなら HTTP 層は詰まっていない（DB / キャッシュの仕事）
+- alp の Sum が落ちたか。落ちないなら HTTP 層は詰まっていない（DB / キャッシュの仕事に戻る）
 - `fail` が 0。`fail` が出たら 5.〜6. の締めすぎを疑う
 
 ## 8. トラブルシュート
@@ -442,13 +442,13 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 
 - upstream 名と `proxy_pass` がずれている（`http://heavy;` の `;` 忘れ、`server` のポートが `APP_PORT` と違う）
 - s1 が unix、s2 が `:8080` の分割で、TCP 側にだけ keepalive を付けたか（unix 側は対象外）
-- `keepalive` 数のせいにしない。まず `sudo nginx -t` と `journalctl -u isu-python` / `isu-go` の直近 40 行
+- `keepalive` の数が原因と決めつけない。まず `sudo nginx -t` と `journalctl -u isu-python` / `isu-go` の直近 40 行を見る
 
 ### タイムアウトで fail が出る
 
-- 短くしすぎ。まず 5. の出発点（全体 5 秒 / connect 3 秒 / read 5 秒）に戻す
+- 短くしすぎている。まず 5. の出発点（全体 5 秒 / connect 3 秒 / read 5 秒）に戻す
 - `client.Timeout` と `context.WithTimeout` の二重締めになっていないか
-- 相手の p99 がタイムアウトに張り付いているなら、こっちを延ばさず相手（DB / 上流）を直す。alp と slp に戻る
+- 相手の p99 がタイムアウトに張り付いているなら、こちらの値を延ばさず相手（DB / 上流）を直す。alp と slp に戻る
 
 ### 上限を絞ったら遅くなる
 
@@ -457,5 +457,5 @@ curl -fsS -o /dev/null -m 5 http://127.0.0.1/
 
 ### TLS の話だけしたい
 
-- VPC 内の素体は HTTP なので、ここでの `time-wait` 差が TLS の差そのままではない。HTTPS ではハンドシェイクが数往復＋CPU になるので、2. の差が拡大する方向に読む
+- VPC 内の素体は HTTP なので、ここでの `time-wait` 差が TLS の差にそのまま当てはまるわけではない。HTTPS ではハンドシェイクが数往復＋CPU になるので、2. の差が拡大する方向に読む
 - TLS セッション再利用は Go の `Transport` が既定でやる。`TLSClientConfig` をいじって切らない。`InsecureSkipVerify` は入れない
