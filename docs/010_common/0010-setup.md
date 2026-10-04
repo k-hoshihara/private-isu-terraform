@@ -2,7 +2,7 @@
 
 サーバ上、または `ssh s1` した先で打つ。値は `config.env` にメモしてから使う。
 
-本番の Ubuntu は回ごとに違うので、事前にラッパーへしない。  
+本番の Ubuntu は回ごとに違うので、事前にスクリプト化しない。
 同じ作業を何度もすると分かってから、このブロックを種に Ansible を書く。
 
 順番: 情報収集 → SSH → Python 切替 → ツール → ログ → 権限 →（必要なら）コード吸い上げ。
@@ -95,8 +95,7 @@ sudo systemctl disable --now isu-go.service      # あれば
 sudo systemctl enable --now isu-python.service
 
 cd /home/isucon/private_isu/webapp/python
-command -v uv >/dev/null && uv sync
-# または python3 -m pip install -r requirements.txt
+command -v uv >/dev/null && sudo -u isucon uv sync
 
 curl -fsS -o /dev/null -m 5 http://127.0.0.1:8080/ || \
   sudo journalctl -u isu-python.service -n 80 --no-pager
@@ -111,7 +110,7 @@ private-isu なら [webapp-setup/python.md](webapp-setup/python.md) でも同じ
 ```bash
 sudo apt-get update -y
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  htop sysstat git jq unzip curl ca-certificates python3-pip percona-toolkit
+  htop sysstat git jq unzip curl ca-certificates python3-pip percona-toolkit netcat-openbsd
 
 ALP_VERSION=1.0.21
 SLP_VERSION=0.2.1
@@ -132,7 +131,7 @@ if ! command -v oha >/dev/null; then
     "https://github.com/hatoo/oha/releases/download/v${OHA_VERSION}/oha-linux-amd64"
   sudo install -m 0755 /tmp/oha /usr/local/bin/oha
 fi
-command -v py-spy >/dev/null || sudo python3 -m pip install py-spy
+command -v py-spy >/dev/null || sudo python3 -m pip install --break-system-packages py-spy
 ```
 
 ## ログ（nginx LTSV / MySQL slow）
@@ -140,11 +139,14 @@ command -v py-spy >/dev/null || sudo python3 -m pip install py-spy
 入れる前に `.orig` を残す。フォーマットは `etc/nginx/ltsv.conf`。
 
 ```bash
-SITE=/etc/nginx/sites-enabled/isucon
+SITE=/etc/nginx/sites-enabled/isucon.conf
 sudo test -f "${SITE}.orig" || sudo cp -a "$SITE" "${SITE}.orig"
 sudo cp -a etc/nginx/ltsv.conf /etc/nginx/conf.d/00-ltsv.conf
-sudo sed -i 's#access_log[^;]*;#access_log /var/log/nginx/access.log ltsv;#' "$SITE"
+# access_log があるのは nginx.conf（site conf には無い）。こちらの形式を ltsv に変える
+sudo test -f /etc/nginx/nginx.conf.orig || sudo cp -a /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
+sudo sed -i 's#access_log /var/log/nginx/access.log;#access_log /var/log/nginx/access.log ltsv;#' /etc/nginx/nginx.conf
 sudo nginx -t && sudo systemctl reload nginx
+sudo nginx -T 2>/dev/null | grep -E 'access_log|log_format ltsv' | head -5
 ```
 
 ```bash
@@ -184,7 +186,7 @@ ulimit はログインし直すと効く。
 ```bash
 HOST=s1
 mkdir -p ~/from-server/webapp ~/from-server/nginx
-ssh "isucon@$HOST" "sudo tar czf - -C / home/isucon/webapp" | tar xzf - -C ~/from-server/webapp --strip-components=3
+ssh "isucon@$HOST" "sudo tar czf - -C / home/isucon/private_isu/webapp" | tar xzf - -C ~/from-server/webapp --strip-components=3
 ssh "isucon@$HOST" "sudo tar czf - -C / etc/nginx" | tar xzf - -C ~/from-server/nginx --strip-components=2
 ```
 
@@ -214,14 +216,14 @@ curl -v http://127.0.0.1:8080/
 ```
 
 依存なら `cd $PYTHON_DIR && uv sync`。ポートが違うなら nginx の `proxy_pass`。  
-go/ruby が enabled のままなら `disable --now`。unit が複数なら `systemctl cat` で選ぶ。
+他言語の unit が enabled のままなら `disable --now`。unit が複数なら `systemctl cat` で選ぶ。
 
 ### nginx -t が失敗する
 
 ```bash
 sudo nginx -t
 ls /etc/nginx/sites-enabled
-sudo cp -a /etc/nginx/sites-enabled/isucon.orig /etc/nginx/sites-enabled/isucon
+sudo cp -a /etc/nginx/sites-enabled/isucon.conf.orig /etc/nginx/sites-enabled/isucon.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
 

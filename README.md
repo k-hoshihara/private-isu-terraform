@@ -219,10 +219,7 @@ aws ssm start-session --target $(terraform output -raw webapp_instance_id)
 起動直後は Ruby の参考実装が動作しています。  
 同時に起動できる実装は1つのため、別の言語を使うときは Ruby を停止してから切り替えます。
 
-手順は言語ごとに分けています。
-
-- [Go](docs/010_common/webapp-setup/go.md)
-- [Python](docs/010_common/webapp-setup/python.md)
+手順は [Python](docs/010_common/webapp-setup/python.md) を使う。コンテストは Python で出る。
 
 Ruby・PHP・Node.js については、private-isu の [manual.md](https://github.com/catatsuy/private-isu/blob/master/manual.md) を参照してください。
 
