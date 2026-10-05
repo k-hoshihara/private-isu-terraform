@@ -153,7 +153,7 @@ cd /home/isucon/private_isu/webapp/python
 
 # 依存を .venv に同期する（pyproject.toml / uv.lock → .venv）。
 # sudo -u isucon なのは作業ファイルの所有者が isucon のため。サービスは .venv/bin/gunicorn を直接起動するので同期しないと反映されない
-command -v uv >/dev/null && sudo -u isucon uv sync
+which uv >/dev/null && sudo -u isucon uv sync
 
 # gunicorn が 8080 で応答するか確認する（-f は HTTP エラーで失敗、-sS は進捗を消してエラーを出す、-o /dev/null は本文を捨てる、-m 5 は 5 秒でタイムアウト）。失敗したら unit ログの直近 80 行を見て原因を特定する
 curl http://127.0.0.1:8080/
@@ -605,14 +605,17 @@ aws ssm start-session --target "$SRC"   # 中で tar czf /tmp/public.tgz -C /hom
 
 `/image` をファイルにしたら、上の `location /` より前に足す。未出力なら付けない（重いアプリへ proxy）。
 
+`backup/s1/etc/nginx/sites-enabled/isucon.conf`:
+
 ```nginx
-# location /image/ {
-#   try_files $uri @app;
-# }
-# location @app {
-#   proxy_set_header Host $host;
-#   proxy_pass http://heavy;
-# }
+location /image/ {
+  try_files $uri @app;
+}
+
+location @app {
+  proxy_set_header Host $host;
+  proxy_pass http://heavy;
+}
 ```
 
 権限（nginx は `www-data`。`/home/isucon` が 750 だと 403）:
@@ -635,23 +638,14 @@ ISUCON は再起動順を保証しない。アプリが先に上がってもよ�
 
 s1 と s2（アプリが動く台）:
 
-```bash
-sudo mkdir -p /etc/systemd/system/isu-python.service.d
-sudo tee /etc/systemd/system/isu-python.service.d/restart.conf >/dev/null <<'EOF'
-[Unit]
-After=network-online.target
-Wants=network-online.target
+この節の手順は [0020-split-3.md](0020-split-3.md) §9・§10 に分割済みです。作業機で drop-in を作る手順と反映手順はそちらを見てください。
 
-[Service]
-Restart=always
-RestartSec=1
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart isu-python.service
-systemctl show isu-python.service -p Restart -p RestartUSec
-```
+`app.py` の `db()` は成功した接続をグローバルに保持する。起動時に MySQL が居なくても gunicorn は起きることがあるが、初回リクエストで落ちる。再接続を足します（[0020-split-3.md](0020-split-3.md) §9 の手順）。
 
-`app.py` の `db()` は成功した接続をグローバルに保持する。起動時に MySQL が居なくても gunicorn は起きることがあるが、初回リクエストで落ちる。再接続を足す（サーバ上のファイル。このリポジトリには置かない）。
+`backup/s1/home/private_isu/webapp/python/app.py` と `backup/s2/home/private_isu/webapp/python/app.py` の `db()`:
+
+```python
+# OperationalError で _db = None にして ping/connect をやり直す
 
 ```python
 # db() を置き換える例。OperationalError で _db = None して ping/connect をやり直す
@@ -935,7 +929,7 @@ git -c "http.extraHeader=Authorization: Bearer ${GH_TOKEN}" pull --rebase origin
 rsync -a --exclude '.git/' "$STASH/webapp/" /home/isucon/private_isu/webapp/
 # python/.venv は上げていないので、必要なら uv sync
 cd /home/isucon/private_isu/webapp/python
-command -v uv >/dev/null && sudo -u isucon uv sync
+which uv >/dev/null && sudo -u isucon uv sync
 
 ETC="$STASH/configs/$NAME/etc"
 test -f "$ETC/nginx/sites-enabled/isucon.conf" && \

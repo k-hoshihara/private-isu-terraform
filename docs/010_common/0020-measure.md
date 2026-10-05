@@ -146,7 +146,10 @@ echo "score=12345  $(date -Iseconds)" >> ~/bench-notes/scores.txt
 
 ```bash
 oha -n 1000 -c 20 --no-tui http://127.0.0.1/posts/1
-uptime; free -h; df -h /; iostat -xz 1 3
+uptime
+free -h
+df -h /
+iostat -xz 1 3
 ```
 
 ## 備考
