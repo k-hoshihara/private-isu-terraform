@@ -1,32 +1,36 @@
 ---
 name: task-worktree
 description: >-
-  今の feature/<topic> ブランチから子の git / Orca worktree を切り、
-  その中で別エージェントを foreground task セッションとして起動する（既定。親はコーディネータ）。
-  子は未コミットの変更として実装し、人のレビューで止まる。
+  git worktree を切って作業ツリーを分ける場合の規約と手順。
+  既定は worktree を作らず、同一ブランチのまま Orca CLI で別エージェントを起動する
+  （orca-subagent を使う）。この skill はユーザーが「worktree を切って」と
+  現メッセージで明示したときだけ使う。
   ユーザーが明示しない限り git commit / git push しない。
   land を頼まれたら feature/<topic> へ 1 コミット（main でも develop/<topic> でもない）し、
-  子 worktree を消す。この組が標準の land。ストリームの diff は
+  子 worktree を消す。ストリームの diff は
   develop/<topic>...feature/<topic> であり origin/main ではない。
-  ユーザーの現メッセージに「子タスク」「サブタスク」「子エージェント」「サブエージェント」の
-  いずれか（または子として起動してほしい旨の明示）があるときのみ使う。
-  合図がない実装タスクでは子を切らず親のまま行う。読み取り専用の質問には使わない。
 ---
 
 # タスク用 worktree
 
 ポリシーはリポジトリルートの `AGENTS.md`。この skill は手順。
 
-## いつ使うか（合図があるときのみ）
+## 既定は worktree を作らない
 
-子の worktree＋別エージェントを立てるのは、ユーザーの**現メッセージ**に次のいずれかがあるときのみ。
-過去メッセージの合図は引き継がない。
+サブタスク（子エージェント）が要るときは、**この skill ではなく** [orca-subagent](../orca-subagent/SKILL.md) を使う。worktree は切らず、親と同じブランチの作業ツリーをそのまま共有して Orca CLI で別エージェントを起動する。
 
-- 「子タスク」「サブタスク」「子エージェント」「サブエージェント」のいずれかの語
-- または子（サブ）として起動してほしい旨の明示（例: 「子worktreeを切って」「別エージェントで並べて」）
+この skill（worktree を使う）を行うのは、ユーザーが**現メッセージで worktree を分けてと明示した**ときだけ。
 
-合図がない場合（まとまった実装タスクであっても）は子を切らず、親 worktree のまま実装する。
-質問、読み取り専用の調査、一行の確認も親 worktree のまま行う。
+## いつ使うか（明示があるときのみ）
+
+子の worktree＋別エージェントを立てるのは、ユーザーの**現メッセージ**に次があるときのみ。過去メッセージの合図は引き継がない。
+
+- 「worktree を切って」「子 worktree で」「作業ツリーを分けて」のいずれかの語
+- または、worktree を作っていい旨の明示
+
+「子タスク」「サブタスク」「子エージェント」とだけ言われた場合は worktree を作らず、同一ブランチで [orca-subagent](../orca-subagent/SKILL.md) に従って委譲する。
+
+質問、読み取り専用の調査、一行の確認は親のまま行う。
 
 ## Orca CLI を決める
 
@@ -87,9 +91,9 @@ ORCA worktree current --json
 
 Orca の系統は親の上に積む。`--base-branch` に親の `feature/<topic>` を明示する。省略しない（Orca はリポジトリ既定、通常 `origin/main` を使う）。`--no-parent` は使わない。
 
-### 2a. 子でエージェントを起動する（合図があったときのみ）
+### 2a. 子でエージェントを起動する（worktree の明示があったときのみ）
 
-合図があったときのみ、worktree を切る**と同時に**その中で別エージェントを起動する。
+worktree を分けることが明示されたときのみ、worktree を切る**と同時に**その中で別エージェントを起動する。「サブタスク」「別エージェントで回して」だけの合図で worktree は作らない（この場合は [orca-subagent](../orca-subagent/SKILL.md) の同一ブランチ委譲に従う）。
 親はこのセッションのままコーディネータとして残る。自分で子パスに移って実装して終わったことにしない。
 
 ```text
@@ -114,11 +118,11 @@ ORCA terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
 ORCA terminal send --terminal <handle> --text "<task brief>" --enter --json
 ```
 
-### 2b. 合図がなければ親のまま実装する（既定）
+### 2b. worktree の明示がなければこの作業ツリーで実装する（既定）
 
-「いつ使うか」の合図がないときは子を切らず、このセッションが親 worktree のまま実装する。
+worktree を分けるとの明示がないときは子を切らず、このセッションがこの作業ツリーで実装する。
 まとまった実装タスクでも既定はここであり、2a は例外である。
-親のまま実装するときも `AGENTS.md`（コミットしない、レビューで止まる）は守る。
+この作業ツリーで実装するときも `AGENTS.md`（コミットしない、レビューで止まる）は守る。
 
 ### 2c. 子のエージェントは worktree に紐づく foreground task セッションとして起動する
 

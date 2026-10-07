@@ -102,7 +102,8 @@ servers() {
 }
 
 remote() {
-  local ip="$1"; shift
+  local ip="$1"
+  shift
   if [ "$ip" = local ]; then
     bash -lc "$*"
   else

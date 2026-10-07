@@ -3,7 +3,7 @@
 # 適用は scripts にしない。1 項目ずつ外してから docs/010_common/0030-ops.md の scp 例で配る。
 
 [mysqld]
-# --- slow query（setup-logs.sh でも入れる。終盤は logs-off で止める） ---
+# --- slow query（docs/010_common/0010-setup.md の「ログ」節でも入れる。終盤は logs-off で止める） ---
 # slow_query_log = 1
 # slow_query_log_file = /var/log/mysql/mysql-slow.log
 # long_query_time = 0

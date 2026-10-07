@@ -39,7 +39,8 @@
 
 ```bash
 hostname
-. /etc/os-release; echo "$PRETTY_NAME"
+. /etc/os-release
+echo "$PRETTY_NAME"
 uname -r
 nproc
 free -h
@@ -95,7 +96,7 @@ sudo systemctl disable --now isu-go.service      # あれば
 sudo systemctl enable --now isu-python.service
 
 cd /home/isucon/private_isu/webapp/python
-command -v uv >/dev/null && sudo -u isucon uv sync
+which uv >/dev/null && sudo -u isucon uv sync
 
 curl -fsS -o /dev/null -m 5 http://127.0.0.1:8080/ || \
   sudo journalctl -u isu-python.service -n 80 --no-pager
@@ -116,22 +117,22 @@ ALP_VERSION=1.0.21
 SLP_VERSION=0.2.1
 OHA_VERSION=1.12.1
 
-if ! command -v alp >/dev/null; then
+if ! which alp >/dev/null; then
   curl -fsSL -o /tmp/alp.zip \
     "https://github.com/tkuchiki/alp/releases/download/v${ALP_VERSION}/alp_linux_amd64.zip"
   unzip -o /tmp/alp.zip -d /tmp && sudo install -m 0755 /tmp/alp /usr/local/bin/alp
 fi
-if ! command -v slp >/dev/null; then
+if ! which slp >/dev/null; then
   curl -fsSL -o /tmp/slp.zip \
     "https://github.com/tkuchiki/slp/releases/download/v${SLP_VERSION}/slp_linux_amd64.zip"
   unzip -o /tmp/slp.zip -d /tmp && sudo install -m 0755 /tmp/slp /usr/local/bin/slp
 fi
-if ! command -v oha >/dev/null; then
+if ! which oha >/dev/null; then
   curl -fsSL -o /tmp/oha \
     "https://github.com/hatoo/oha/releases/download/v${OHA_VERSION}/oha-linux-amd64"
   sudo install -m 0755 /tmp/oha /usr/local/bin/oha
 fi
-command -v py-spy >/dev/null || sudo python3 -m pip install --break-system-packages py-spy
+which py-spy >/dev/null || sudo python3 -m pip install --break-system-packages py-spy
 ```
 
 ## ログ（nginx LTSV / MySQL slow）
@@ -141,12 +142,17 @@ command -v py-spy >/dev/null || sudo python3 -m pip install --break-system-packa
 ```bash
 SITE=/etc/nginx/sites-enabled/isucon.conf
 sudo test -f "${SITE}.orig" || sudo cp -a "$SITE" "${SITE}.orig"
-sudo cp -a etc/nginx/ltsv.conf /etc/nginx/conf.d/00-ltsv.conf
+# log_format は使う場所より前で定義する。conf.d/ は access_log の行より後で include されるので、
+# フォーマット定義だけ別ファイルに置いて mime.types の直後で include する（conf.d/ には置かない）
+sudo cp -a etc/nginx/ltsv.conf /etc/nginx/ltsv-format.conf
 # access_log があるのは nginx.conf（site conf には無い）。こちらの形式を ltsv に変える
 sudo test -f /etc/nginx/nginx.conf.orig || sudo cp -a /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
+sudo sed -i '\#include /etc/nginx/mime.types;#a include /etc/nginx/ltsv-format.conf;' /etc/nginx/nginx.conf
 sudo sed -i 's#access_log /var/log/nginx/access.log;#access_log /var/log/nginx/access.log ltsv;#' /etc/nginx/nginx.conf
 sudo nginx -t && sudo systemctl reload nginx
 sudo nginx -T 2>/dev/null | grep -E 'access_log|log_format ltsv' | head -5
+# LTSV 化したあとにログを回す（それ以前の combined 行は alp ltsv が捨てる）
+curl -s -o /dev/null http://127.0.0.1/ && tail -1 /var/log/nginx/access.log | cut -c1-120
 ```
 
 ```bash
@@ -156,7 +162,7 @@ sudo tee "$DROP" >/dev/null <<'EOF'
 [mysqld]
 slow_query_log = 1
 slow_query_log_file = /var/log/mysql/mysql-slow.log
-long_query_time = 0
+long_query_time = 1
 log_queries_not_using_indexes = 0
 EOF
 sudo mkdir -p /var/log/mysql
@@ -164,6 +170,8 @@ sudo touch /var/log/mysql/mysql-slow.log
 sudo chown mysql:mysql /var/log/mysql/mysql-slow.log || true
 sudo systemctl restart mysql
 ```
+
+`long_query_time = 0` は drop-in に残しません（ベンチ 1 本で数百 MB〜GBになりディスクが埋まります）。全件キャプチャは `SET GLOBAL` で一時的に 0 にし、取り終わったら 1 に戻します。
 
 ## 権限（py-spy / ulimit）
 
@@ -240,6 +248,6 @@ sudo systemctl restart mysql
 GitHub に届かないときは作業機でバイナリを取って `/usr/local/bin` へ置く。
 
 ```bash
-command -v alp slp oha py-spy
+which alp slp oha py-spy
 ```
 
