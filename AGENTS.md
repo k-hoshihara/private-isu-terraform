@@ -4,7 +4,7 @@
 
 オンデマンドの skill 一覧:
 
-- `orca-subagent` — サブタスクの委譲手順（同一ブランチのまま Orca CLI で別エージェントを起動する。worktree は作らない）
+- `orca-subagent` — サブタスクの委譲手順（同一ブランチのまま Orca CLI で別エージェントを起動する。worktree は作らない。プラットフォーム名は Windows WSL なら `orca-ide`、macOS なら `orca`）
 - `task-worktree` — git worktree と land の規約。worktree を使うのはユーザーが明示したときだけ
 - `docs-preview` — Markdown を docsify でプレビューする手順
 
@@ -16,7 +16,10 @@
 2. サブタスクが要ると分かった場合は、同一ブランチのまま [`.agents/skills/orca-subagent/SKILL.md`](.agents/skills/orca-subagent/SKILL.md) に従って Orca CLI の orchestration で別エージェントを起動する
 3. 親と子は**同じブランチ・同じ作業ツリー**で作業する。競合しないよう担当範囲（対象パス）を分割して渡す。書き込むパスが重なるなら分けたまま逐次実行にする
 4. プラットフォーム備え付けの subagent 機能（バックグラウンド実行）は使わない
-5. 起動の合図がない実装タスク・質問・読み取り専用の調査は、委譲せず親のまま行う
+5. **バックグラウンド・非同期・裏でのプロセス起動もしない。** `nohup ... &`、`&` によるバックグラウンド化、バックグラウンド実行対応の実装（BackgroundTask、background パラメータ、バックグラウンドモード）は使わない。長時間処理もフォアグラウンドで逐次実行する
+6. 子タスクや非同期に走らせたい処理は、[`.agents/skills/orca-subagent/SKILL.md`](.agents/skills/orca-subagent/SKILL.md) に従って Orca CLI で別エージェントを起動する。bin 名はプラットフォームで変わる（Windows WSL なら `orca-ide`、macOS なら `orca`）。ベンチ・バッチも子タスクとして Orca Agent に実行させ、親が素のプロセスとして回さない
+7. 起動した Agent の進捗はユーザーから求められた時だけ報告する。sleep してログを読むポーリングはしない
+8. 起動の合図がない実装タスク・質問・読み取り専用の調査は、委譲せず親のまま行う
 
 ## Git: エージェントはコミットしない
 

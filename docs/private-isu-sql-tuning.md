@@ -6,6 +6,8 @@
 
 ---
 
+<a id="0-最初に必ず確認すること"></a>
+
 ## 0. 最初に必ず確認すること
 
 **このリポジトリには DDL が含まれていません。** `backup/base/` にも `docs/` にも `CREATE TABLE` が 1 つもありません。テーブル定義はベンチマーカーのセットアップが流します。インデックスを決める前に、現物の定義を必ず取り出してください。
@@ -25,7 +27,7 @@ sudo mysql -e "SHOW INDEX FROM isuconp.comments;"
 | テーブル | コードから確定したカラム | 相当コード |
 | --- | --- | --- |
 | `users` | `id`, `account_name`, `passhash`, `authority`, `del_flg`, `created_at` | `python/app.py:88,127,262,300,480` |
-| `posts` | `id`, `user_id`, `body`, `mime`, `created_at`, `imgdata`（MEDIUMBLOB と `0090-app-tuning.md:83` に明記） | `python/app.py:288,308,361,373,413,429` |
+| `posts` | `id`, `user_id`, `body`, `mime`, `created_at`, `imgdata`（MEDIUMBLOB と `0080-app-tuning.md:83` に明記） | `python/app.py:288,308,361,373,413,429` |
 | `comments` | `id`, `post_id`, `user_id`, `comment`, `created_at` | `python/app.py:137,143,461` |
 
 MySQL のバージョンと、既定のまま残っている変数を確認します。
@@ -57,7 +59,7 @@ sudo mysql -e "SHOW VARIABLES LIKE 'slow_query_log';"
 | 11 | redo log、`tmpdir`、IO 系 | 設定 | 中 | 未検証 |
 | 12 | 統計情報の再収集（`ANALYZE TABLE`） | SQL | 小から中 | 未検証 |
 
-「実測済み」は [0030-measure.md](040_practice/0030-measure.md) から [0110-overall-tuning.md](040_practice/0110-overall-tuning.md) までで、`fail=0` のベンチを取ったものです。「未検証」はこのリポジトリではまだ点数を取っていない候補です。**未検証の項目は、入れる前に [§7](#7-検証手順) の手順で 1 手ずつ測ってください。**
+「実測済み」は [0020-measure.md](040_practice/0020-measure.md) から [0100-overall-tuning.md](040_practice/0100-overall-tuning.md) までで、`fail=0` のベンチを取ったものです。「未検証」はこのリポジトリではまだ点数を取っていない候補です。**未検証の項目は、入れる前に [§7](#7-検証手順) の手順で 1 手ずつ測ってください。**
 
 ---
 
@@ -65,9 +67,11 @@ sudo mysql -e "SHOW VARIABLES LIKE 'slow_query_log';"
 
 MySQL に `CREATE INDEX IF NOT EXISTS` はありません。存在確認、貼る、再確認、の順でやります。貼ったあとの `EXPLAIN` が `ALL` から `ref` または `range` に変わったことを確認するまでが 1 手です。
 
+<a id="2-1-commentspost_id-created_at最重要"></a>
+
 ### 2-1. `comments(post_id, created_at)`、最重要
 
-**これが 1 本目の当たりです。** タイムラインの `make_posts` が 1 リクエストごとに発行する 2 本です。
+**これが最初の対象です。** タイムラインの `make_posts` が 1 リクエストごとに発行する 2 本です。
 
 - `SELECT COUNT(*) AS count FROM comments WHERE post_id = %s`（`python/app.py:136-140`）
 - `SELECT * FROM comments WHERE post_id = %s ORDER BY created_at DESC`、必要なら `LIMIT 3`（`python/app.py:142-148`）
@@ -130,6 +134,8 @@ CREATE INDEX idx_posts_user_created ON posts (user_id, created_at);
 ```
 
 同じインデックスで `SELECT id FROM posts WHERE user_id = %s`（`python/app.py:318-320`）も index only scan になります。
+
+<a id="2-4-postscreated_at"></a>
 
 ### 2-4. `posts(created_at)`
 
@@ -197,7 +203,7 @@ CREATE INDEX idx_users_banned ON users (authority, del_flg, created_at);
 
 ### 2-8. インデックスは 1 本ずつ
 
-**インデックスは 1 本ずつ足します。** まとめて貼ると、どれが効いたか分からなくなります。手順は [040_practice/0100-sql-tuning.md](040_practice/0100-sql-tuning.md) と同じ流れです。
+**インデックスは 1 本ずつ足します。** まとめて貼ると、どれが効いたか分からなくなります。手順は [040_practice/0015-sql-tuning.md](040_practice/0015-sql-tuning.md) と同じ流れです。
 
 ```bash
 # 1 手 = EXPLAIN、その 1 本だけの CREATE INDEX、再 EXPLAIN、fail=0 のベンチ
@@ -209,6 +215,8 @@ CREATE INDEX idx_users_banned ON users (authority, del_flg, created_at);
 ## 3. クエリとコードの書き換え
 
 インデックスだけでは直らない部分です。`make_posts()` が悪い根源なので、ここを直します。
+
+<a id="3-1-一覧クエリに-imgdata-が入っている"></a>
 
 ### 3-1. 一覧クエリに `imgdata` が入っている
 
@@ -226,9 +234,11 @@ CREATE INDEX idx_users_banned ON users (authority, del_flg, created_at);
    ```sql
    SELECT id, user_id, body, mime, created_at FROM posts WHERE id = %s;
    ```
-2. **画像を EBS 上のファイルに寄せる。** [0090-app-tuning.md](040_practice/0090-app-tuning.md) §2 の手順です。`/image` は nginx が直接返します。
+2. **画像を EBS 上のファイルに寄せる。** [0080-app-tuning.md](040_practice/0080-app-tuning.md) §2 の手順です。`/image` は nginx が直接返します。
 
 **このリポジトリで実測済み。** 画像ファイル化で 3411 から 3578、さらに `comments` のインデックスで 58063。ただし、列を明示するだけで `make_posts` の転送量は減るので、コードだけの変更だけでも試す価値はあります。
+
+<a id="3-2-make_posts-が-n1"></a>
 
 ### 3-2. `make_posts()` が N+1
 
@@ -251,7 +261,7 @@ CREATE INDEX idx_users_banned ON users (authority, del_flg, created_at);
 4. 投稿者の `user_id` も同じクエリに含める
 5. Python の dict に詰める
 
-**注意。** `LIMIT 3` を SQL 側で保てば `(post_id, created_at)` のインデックスを活かせます。全件取ってから Python 側で切る方法は、インデックスに filesort  المطلوبです。1 投稿ごとに 3 件だけ取るのをインデックスに任せるか、窓関数で 1 本に畳むか、**測って決めます**。
+**注意。** `LIMIT 3` をSQL側で保てば `(post_id, created_at)` のインデックスを活かせます。全件を取得してからPython側で切る方法では、索引が使われても不要な行の転送・変換が残ります。投稿ごとに3件を取る方法と窓関数でまとめる方法を、計画とベンチで比較します。
 
 ```sql
 -- MySQL 8 の窓関数で 1 本に畳む例
@@ -263,6 +273,8 @@ SELECT * FROM (
 ```
 
 10 万行の repartition は重いです。**まず [§2-1](#2-1-commentspost_id-created_at最重要) のインデックスだけ入れて測ってください。** それで点数が上がれば、N+1 は後回しで構いません。
+
+<a id="3-3-全件-fetchall-して-20-件で捨てる"></a>
 
 ### 3-3. 全件 `fetchall()` して 20 件で捨てる
 
@@ -337,6 +349,8 @@ SELECT COUNT(*) FROM comments c
 
 ## 4. 接続とドライバ
 
+<a id="4-1-接続が-1-本だけ"></a>
+
 ### 4-1. 接続が 1 本だけ
 
 各言語の実装はこうなっています。
@@ -354,7 +368,7 @@ SELECT COUNT(*) FROM comments c
 
 **手順。**
 
-1. ワーカー数を上げる。`isu-python.service` の `-w` です（[0080-infra-params.md](040_practice/0080-infra-params.md) §5。実測で 1057 から 3411）
+1. ワーカー数を上げる。`isu-python.service` の `-w` です（[0070-infra-params.md](040_practice/0070-infra-params.md) §5。実測で 1057 から 3411）
 2. そのあとで `innodb_buffer_pool_size` を大きくする（[§5-1](#5-1-innodb_buffer_pool_size最重要の設定ノブ)）
 3. `max_connections` が足りているか確認する（[§5-9](#5-9-その他の既定値)）
 
@@ -364,7 +378,7 @@ SELECT COUNT(*) FROM comments c
 
 `python/app.py:87-89` のように `cur.execute(query, (params,))` としています。`MySQLdb` はクライアント側で補間して**毎回テキスト SQL を送ります**。つまり毎回パースと最適化が走ります。
 
-サーバ側プリペアを使うかどうかを**スロークエリログで測定してから**決めてください。手順は [0090-app-tuning.md](040_practice/0090-app-tuning.md) §5 にあります。
+サーバ側プリペアを使うかどうかを**スロークエリログで測定してから**決めてください。手順は [0080-app-tuning.md](040_practice/0080-app-tuning.md) §4 にあります。
 
 **期待値は小さいです。** このクエリはインデックスが効けば 1 ms 未満なので、パースコストは全体をカバーしません。このリポジトリで実測した `digest()` の 58063 から 58506 と同じく、効果が小さければ「小さい」と書くのが正しい結論です。
 
@@ -372,7 +386,7 @@ SELECT COUNT(*) FROM comments c
 
 `python/app.py:53` で `MySQLdb.cursors.DictCursor` を指定しています。1 行ごとに dict を作ります。`get_index` で 1 万行取り出すときは dict が 1 万個できます。
 
-- `post["comment_count"]` のようなアクセス写法に慣れているなら tuple に変えます
+- tupleへ変える場合は、`post["comment_count"]` のような辞書形式の参照も書き換える必要があります
 - [§3-3](#3-3-全件-fetchall-して-20-件で捨てる) のストリーミングカーソルにするなら `SSDictCursor` または `SSCursor`
 
 **この議論は Python 限定です。** 他の言語は行を構造体や Map に取るので同じ話はできません。
@@ -403,6 +417,8 @@ cursor.execute("SELECT ... FROM `posts` WHERE `id` = %s", (pid,))
 **現状は素の Ubuntu デフォルトです。** `backup/base/etc/mysql/mysql.conf.d/mysqld.cnf` には `key_buffer_size = 16M` と `bind-address = 127.0.0.1` 以外は**すべてコメントアウト**されています。`mysql.conf.d/mysql.cnf` は空の `[mysql]`、`conf.d/mysql.cnf` も空です。
 
 つまり以下は**全部 MySQL の既定値のまま**です。drop-in は `backup/s3/etc/mysql/mysql.conf.d/` に置きます。`mysqld.cnf` より後に読まれるので上書きされます。
+
+<a id="5-1-innodb_buffer_pool_size最重要の設定ノブ"></a>
 
 ### 5-1. `innodb_buffer_pool_size`、最重要の設定ノブ
 
@@ -446,7 +462,7 @@ innodb_flush_log_at_trx_commit = 2
 
 **`0` は使いません。** OS クラッシュでコミット済みトランザクションが全部消えます。ベンチの `/initialize` で消えた投稿が復活するのと整合しません。
 
-手順は [040_practice/0100-sql-tuning.md](040_practice/0100-sql-tuning.md) にあります。
+手順は [040_practice/0015-sql-tuning.md](040_practice/0015-sql-tuning.md) にあります。
 
 ### 5-3. redo log のサイズ
 
@@ -547,6 +563,8 @@ SELECT /*+ SET_VAR(sort_buffer_size = 4M) */ ... ;
 
 アプリ側に対応実装が要ります。**インデックスを先にやります。** hint で症状を隠すと、インデックス選びが壊れたまま点数だけが上がります。
 
+<a id="5-9-その他の既定値"></a>
+
 ### 5-9. その他の既定値
 
 効果が小さいもの、触らないものをまとめます。
@@ -577,7 +595,7 @@ SELECT /*+ SET_VAR(sort_buffer_size = 4M) */ ... ;
 
 `posts.imgdata` は MEDIUMBLOB です。`SELECT * FROM posts` で必ず乗っかってきます。
 
-対応は [0090-app-tuning.md](040_practice/0090-app-tuning.md) §2 の画像ファイル化です。ファイルに置いたら次の SQL を考えます。
+対応は [0080-app-tuning.md](040_practice/0080-app-tuning.md) §2 の画像ファイル化です。ファイルに置いたら次の SQL を考えます。
 
 ```sql
 -- 先に EBS にファイルがあることを確認します。順序を逆にすると画像が消えます
@@ -586,9 +604,11 @@ ANALYZE TABLE posts;
 OPTIMIZE TABLE posts;
 ```
 
-**このリポジトリのチュートリアルは「投稿の本体データは MySQL のまま残す」「DB の `imgdata` は消さない」というルールを明示しています**（[0070-static-cache.md](040_practice/0070-static-cache.md)、[0040-cache.md](040_practice/0040-cache.md)）。手順書に沿うなら上の `UPDATE` と `OPTIMIZE` はやりません。
+**このリポジトリのチュートリアルは「投稿の本体データは MySQL のまま残す」「DB の `imgdata` は消さない」というルールを明示しています**（[0060-static-cache.md](040_practice/0060-static-cache.md)、[0030-cache.md](040_practice/0030-cache.md)）。手順書に沿うなら上の `UPDATE` と `OPTIMIZE` はやりません。
 
 OPTIMIZE TABLE は InnoDB のテーブル再構築です。時間はかかりますが、buffer pool に乗るデータ量が減ります。
+
+<a id="6-2-統計情報を再収集する"></a>
 
 ### 6-2. 統計情報を再収集する
 
@@ -640,6 +660,8 @@ UPDATE users SET del_flg = 1 WHERE id % 50 = 0;
 - 大量 DELETE で undo が積み上がります。ベンチ前に `SHOW ENGINE INNODB STATUS` の `History list length` を見てください
 
 ---
+
+<a id="7-検証手順"></a>
 
 ## 7. 検証手順
 
@@ -766,7 +788,7 @@ Node には `SELECT * FROM users WHERE account_name = ?` で `del_flg` を持た
 | --- | --- |
 | Go、Ruby、PHP、Node での実装 | 手順書は Python 専用です（[010_common/webapp-setup/python.md](010_common/webapp-setup/python.md)）。SQL レイヤは付録のとおり同一なので、インデックスと設定はそのまま使えます。コードの書き方の議論は Python 限定です |
 | クエリキャッシュ | MySQL 8 で削除済み。**追わないでください** |
-| Redis などの別のキャッシュ | SQL チューニングとは別の話題です。[0040-cache.md](040_practice/0040-cache.md) を参照 |
+| Redis などの別のキャッシュ | SQL チューニングとは別の話題です。[0030-cache.md](040_practice/0030-cache.md) を参照 |
 | 分散 DB、レプリカ | ベンチマークの規模では不要です |
 | テーブルの垂直分割 | `posts`、`comments`、`users` を分割すると管理コストに見合いません |
 | 本番での `EXPLAIN ANALYZE` | 実際に走ります。まず `EXPLAIN` と `EXPLAIN FORMAT=JSON` を使い、それで足りなければ `ANALYZE` へ |
@@ -777,8 +799,9 @@ Node には `SELECT * FROM users WHERE account_name = ?` で `del_flg` を持た
 
 ## 関連文書
 
-- [040_practice/0100-sql-tuning.md](040_practice/0100-sql-tuning.md) — SQL チューニングの手順書
-- [040_practice/0090-app-tuning.md](040_practice/0090-app-tuning.md) — 画像ファイル化、プリペアドステートメントの計測
+- [040_practice/0015-sql-tuning.md](040_practice/0015-sql-tuning.md) — SQL チューニングの手順書（単一構成）
+- 分割後の SQL 確認は [040_practice/0110-split-4.md](040_practice/0110-split-4.md) にあります
+- [040_practice/0080-app-tuning.md](040_practice/0080-app-tuning.md) — 画像ファイル化、プリペアドステートメントの計測
 - [010_common/0020-measure.md](010_common/0020-measure.md) — 計測の基本（alp、slp、EXPLAIN、インデックス）
-- [040_practice/0080-infra-params.md](040_practice/0080-infra-params.md) — ワーカー数、somaxconn、FD 上限
-- [040_practice/0110-overall-tuning.md](040_practice/0110-overall-tuning.md) — py-spy で残りの重さを見る
+- [040_practice/0070-infra-params.md](040_practice/0070-infra-params.md) — ワーカー数、somaxconn、FD 上限
+- [040_practice/0100-overall-tuning.md](040_practice/0100-overall-tuning.md) — py-spy で残りの重さを見る

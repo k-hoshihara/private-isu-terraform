@@ -11,7 +11,7 @@ resource "aws_instance" "webapp" {
   count = var.webapp_instance_count
 
   ami                    = var.ami_id
-  instance_type          = var.webapp_instance_type
+  instance_type          = length(var.instance_types) > count.index ? var.instance_types[count.index] : var.webapp_instance_type
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.webapp.id]
   iam_instance_profile   = aws_iam_instance_profile.ssm.name
