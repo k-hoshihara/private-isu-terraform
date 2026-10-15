@@ -1,0 +1,4 @@
+comments	PRIMARY	0	id
+posts	PRIMARY	0	id
+users	account_name	0	account_name
+users	PRIMARY	0	id
