@@ -1,7 +1,8 @@
 # 0030 計測ツールチュートリアル
 
-分割後（[0020-split-1.md](0020-split-1.md)〜[0020-split-3.md](0020-split-3.md) 済み）を前提に、計測サイクルを手で回します。計測ツール（alp / slp / oha / mysql クライアント）の導入と、bench-prep → 公式ベンチ → `scores.txt` の回し方を固めます。
-環境構築は [0010-env.md](0010-env.md) で終えています。ここでは計測だけを行います。
+[0020-split-3.md](0020-split-3.md) の続きです。分割後の 3 台で、計測ツール（alp / slp / oha / mysql クライアント）を入れ、ログの形式を整え、bench-prep → 公式ベンチ → `scores.txt` のサイクルを手で回します。
+
+?> [0020-split-3.md](0020-split-3.md)（起動順・再起動試験）が未完了でも、[0020-split-2.md](0020-split-2.md) の締めのベンチが `fail` 0 で通っていれば、この 0030 は進められます。
 
 打つ台を分けます。1 台に全部ある想定では打てません（s1 に mysqld はいません）：
 
@@ -9,7 +10,7 @@
 - s3（DB 役）: bench-prep（slow）→ `SET GLOBAL` → `slp` / `pt-query-digest`
 - 共有 memcached は s2 です（`backup/common/ips.sh` の `MC_PRIV`）。s1 の `127.0.0.1:11211` は遊んでいる別物なので見ません
 
-順番: ツールを入れる → サイクルを回す。出口は [0040-cache.md](0040-cache.md)。
+順番: ツールを入れる（1.）→ ログの形式を整える（2.）→ サイクルを回す（3.）。出口は [0040-cache.md](0040-cache.md)。
 
 ## 1. 計測ツールを入れる
 
@@ -93,7 +94,142 @@ sudo mysql -e 'SELECT @@version, @@slow_query_log, @@slow_query_log_file, @@long
 - `mysql` でアプリと同じ接続先に入れる
 - s3 の `sudo mysql -e 'SELECT ...'` で今の slow 設定値が見える
 
-## 2. 計測サイクルを回す
+## 2. ログの形式を整える（s1: nginx LTSV / s3: slow log）
+
+alp は LTSV 形式のアクセスログを読みます。素体の nginx は combined 形式なので、そのままでは `alp ltsv` が空の表しか返しません。slow log も素体ではコメントアウトされています。分割後は nginx が s1、mysqld が s3 にいるので、台ごとに入れます。
+
+設定ファイルはサーバで直接編集しません。作業機で `backup/s1`・`backup/s3` に作る → push → 各台で pull → コピー → 反映、の順にします（[0020-split-2.md](0020-split-2.md) §8 と同じ流れです）。以下の `BR` は自分の feature ブランチ名に置き換えます。
+
+### 確認: もう入っているか
+
+入っていれば 2. は飛ばします。
+
+```bash
+# s1 で打つ。ltsv の行が 2 つ（log_format と access_log）出れば LTSV 化済み
+sudo nginx -T 2>/dev/null | grep -n 'ltsv' || echo '未LTSV'
+```
+
+```bash
+# s3 で打つ。1 と /var/log/mysql/mysql-slow.log が出れば slow は有効
+sudo mysql -N -e 'SELECT @@slow_query_log, @@slow_query_log_file, @@long_query_time'
+```
+
+### s1: nginx を LTSV にする
+
+作業機でファイルを 2 つ作ります。フォーマット定義（`ltsv-format.conf`）と、それを読み込む `nginx.conf` です。
+
+?> `log_format` は使う場所（`access_log` の行）より前で定義する必要があります。`conf.d/` は `access_log` より後で読み込まれるので、`conf.d/` に置くと `nginx -t` が `unknown log format "ltsv"` で失敗します。フォーマット定義は別ファイルにして、`mime.types` の直後で読み込みます。
+
+```bash
+# 作業機（手元の private-isu-terraform）で打つ
+BR=feature/work-<名前>
+git switch "$BR" && git pull --ff-only
+mkdir -p backup/s1/etc/nginx
+cp etc/nginx/ltsv.conf backup/s1/etc/nginx/ltsv-format.conf
+# s1 の nginx.conf が backup/s1 に無ければ素体から持ってくる（分割で nginx.conf 自体は変えていない）
+[ -f backup/s1/etc/nginx/nginx.conf ] || cp backup/base/etc/nginx/nginx.conf backup/s1/etc/nginx/nginx.conf
+
+F=backup/s1/etc/nginx/nginx.conf
+# mime.types の直後に include を 1 行足す（2 回打っても増えない）
+grep -q 'ltsv-format.conf' "$F" || \
+  perl -i -pe 's#^(\s*)include /etc/nginx/mime.types;#$&\n$1include /etc/nginx/ltsv-format.conf;#' "$F"
+# access_log の形式を ltsv にする
+perl -i -pe 's#access_log /var/log/nginx/access.log;#access_log /var/log/nginx/access.log ltsv;#' "$F"
+grep -n 'ltsv' "$F"
+```
+
+成功すると `include /etc/nginx/ltsv-format.conf;` と `access_log /var/log/nginx/access.log ltsv;` の 2 行が出ます。出なければ `nginx.conf` の該当行の書き方が素体と違うので、エディタで直します。
+
+```bash
+# 作業機
+git add backup/s1/etc/nginx && git commit -m "measure: s1 の nginx を LTSV に" && git push
+```
+
+s1 で反映します。変える前に `.orig` を残し、`nginx -t` が通ってから reload します。
+
+```bash
+# s1 で打つ
+REPO=/home/isucon/private-isu-terraform
+BR=feature/work-<名前>
+cd "$REPO" && git fetch origin && git switch "$BR" && git pull --ff-only
+
+sudo test -f /etc/nginx/nginx.conf.orig || sudo cp -a /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
+sudo install -m 0644 -o root -g root "$REPO/backup/s1/etc/nginx/ltsv-format.conf" /etc/nginx/ltsv-format.conf
+sudo install -m 0644 -o root -g root "$REPO/backup/s1/etc/nginx/nginx.conf" /etc/nginx/nginx.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`nginx -t` が `syntax is ok` と `test is successful` を返せば成功です。失敗したら `sudo cp -a /etc/nginx/nginx.conf.orig /etc/nginx/nginx.conf` で戻し、`sudo nginx -t` を通してから原因を見ます。
+
+LTSV になったか確かめます。LTSV 化より前の combined 形式の行は `alp ltsv` が読めないので、ここでログを 1 回回します。
+
+```bash
+# s1 で打つ
+TS=$(date +%Y%m%d%H%M%S)
+sudo mv /var/log/nginx/access.log /var/log/nginx/access.log.$TS
+sudo nginx -s reopen
+curl -s -o /dev/null http://127.0.0.1/
+sudo tail -1 /var/log/nginx/access.log | cut -c1-120
+```
+
+成功すると `time:2026-...	host:127.0.0.1	...` のように `項目名:値` がタブ区切りで並んだ行が出ます。`127.0.0.1 - - [...] "GET / HTTP/1.1"` の形なら、まだ combined です。
+
+### s3: slow log を有効にする
+
+作業機で drop-in を作ります。`long_query_time` は 1 にします。0 にするとベンチ 1 本で数百 MB〜GB になり、ディスクが埋まります（全件を取るときは 3. で一時的に 0 にします）。
+
+```bash
+# 作業機で打つ
+mkdir -p backup/s3/etc/mysql/mysql.conf.d
+cat > backup/s3/etc/mysql/mysql.conf.d/99-isucon-slow.cnf <<'EOF'
+[mysqld]
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/mysql-slow.log
+long_query_time = 1
+log_queries_not_using_indexes = 0
+EOF
+git add backup/s3/etc/mysql && git commit -m "measure: s3 の slow log を有効に" && git push
+```
+
+?> 素体の `mysqld.cnf` では slow 関連の行がすべてコメントアウトされているので、`99-` の名前でも打ち消されません（`zz-bind-all.cnf` のように後勝ちを気にする必要はありません）。
+
+s3 で反映します。mysqld を restart するので、そのあとアプリ（s1 と s2 の `isu-python`）も restart します。アプリは DB 接続を使い回すので、しないと古い接続のまま 500 になります。
+
+```bash
+# s3 で打つ
+REPO=/home/isucon/private-isu-terraform
+BR=feature/work-<名前>
+cd "$REPO" && git fetch origin && git switch "$BR" && git pull --ff-only
+
+sudo install -m 0644 -o root -g root \
+  "$REPO/backup/s3/etc/mysql/mysql.conf.d/99-isucon-slow.cnf" /etc/mysql/mysql.conf.d/99-isucon-slow.cnf
+sudo mkdir -p /var/log/mysql
+sudo touch /var/log/mysql/mysql-slow.log
+sudo chown mysql:mysql /var/log/mysql/mysql-slow.log
+sudo systemctl restart mysql
+sudo mysql -N -e 'SELECT @@slow_query_log, @@slow_query_log_file, @@long_query_time'
+```
+
+成功すると `1	/var/log/mysql/mysql-slow.log	1.000000` が出ます。mysqld が起きないときは `sudo rm /etc/mysql/mysql.conf.d/99-isucon-slow.cnf` で外して restart し、`sudo journalctl -u mysql -n 80 --no-pager` を見ます。
+
+```bash
+# s1 と s2 で打つ
+sudo systemctl restart isu-python.service
+```
+
+```bash
+# s1 で打つ。200 が返れば、s1 → s2 → s3 の経路が生きている
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/
+```
+
+### 観察すること
+
+- s1 の `access.log` の最新行が `time:...` で始まる LTSV になっている
+- s3 で `@@slow_query_log` が 1、`@@long_query_time` が 1 になっている
+- s1 の `curl` が 200 を返す
+- `backup/s1/etc/nginx/` と `backup/s3/etc/mysql/mysql.conf.d/` に、反映したファイルが入っている
+
+## 3. 計測サイクルを回す
 
 ログを回してから s1 で公式ベンチを 1 本回します。slow 側の操作は s3 で打ちます。点数を `~/bench-notes/scores.txt` に書きます。空にする操作はログの**回転（`mv` + `reopen`）**であり、ログ停止ではありません。
 
@@ -132,27 +268,20 @@ df -h /
 
 nginx のログは `mv` + `nginx -s reopen` で回します。mysqld は slow log に `truncate -s 0` を使いません（途中が **NUL で埋まります**。ファイルだけ巨大になり、`slp` / `pt-query-digest` が壊れます）。
 
-slow log の永続化（drop-in）は [0010-setup.md](../010_common/0010-setup.md) の「ログ（nginx LTSV / MySQL slow）」節を見ます。
+### slow log の設定を確認する（s3 で打つ）
 
-### スロークエリを ON にする（s3 で打つ）
-
-`long_query_time` を最初から 0 にはしません（ベンチ 1 本で数百 MB〜GB になりディスクが埋まるため）。まず 1 から始めます。
+slow log は 2. の drop-in で有効になっています（`long_query_time = 1`。1 秒以上かかったクエリだけを記録します）。ベンチの前に値を確認します。
 
 ```bash
-# s3 で打つ
-sudo mysql -e "SET GLOBAL slow_query_log = 1"
-sudo mysql -e "SET GLOBAL slow_query_log_file = '/var/log/mysql/mysql-slow.log'"
-sudo mkdir -p /var/log/mysql
-sudo touch /var/log/mysql/mysql-slow.log
-sudo chown mysql:mysql /var/log/mysql/mysql-slow.log
-# まず遅いものだけ。ディスクを守る
-sudo mysql -e "SET GLOBAL long_query_time = 1"
+# s3 で打つ。1  /var/log/mysql/mysql-slow.log  1.000000 が出れば OK
 sudo mysql -N -e 'SELECT @@slow_query_log, @@slow_query_log_file, @@long_query_time'
 ```
 
-`SET GLOBAL` は既存の接続には効きません。新規接続から効くので、変えたらアプリ（s1 と s2 の `isu-python`）を restart してから測ります。再起動で消えるので、残したい場合は [0010-setup.md](../010_common/0010-setup.md) の「ログ（nginx LTSV / MySQL slow）」節の drop-in に書きます。
+`0` が出たら 2. の「s3: slow log を有効にする」に戻ります。
 
-短い全件キャプチャ（ベンチ 1 本だけ）:
+### 全件を短く取る（ベンチ 1 本だけ）
+
+1 秒未満のクエリも含めて全部取りたいときは、`SET GLOBAL` で一時的に `long_query_time` を 0 にします。`SET GLOBAL` は既存の接続には効かず、新しい接続から効くので、変えたらアプリ（s1 と s2 の `isu-python`）を restart してから測ります。mysqld を再起動すると drop-in の 1 に戻ります。
 
 ```bash
 # 上の bench-prep（s3 側）のあと。s3 で打つ
@@ -194,7 +323,7 @@ echo "$(date -Iseconds)  score=  pass=  fail=  note=baseline" >> ~/bench-notes/s
 マッチャは `etc/alp/matching_groups.json`（作り方は [prompts/alp-matchers.md](../010_common/prompts/alp-matchers.md)）。
 
 ```bash
-# s1 で打つ。LTSV 化（[0010-setup.md](../010_common/0010-setup.md) の「ログ」節）済みが前提
+# s1 で打つ。2. で LTSV 化済みが前提
 MATCH='/posts/[0-9]+,/image/[0-9]+,/@[a-zA-Z0-9_]+'
 sudo cat /var/log/nginx/access.log | alp ltsv --sort sum --reverse -m "$MATCH"
 ```
@@ -206,7 +335,7 @@ sudo slp my --file /var/log/mysql/mysql-slow.log
 sudo pt-query-digest /var/log/mysql/mysql-slow.log
 ```
 
-`alp ltsv` が空表だけ返すときは、LTSV 化前のログが残っています。LTSV 化してからログを回し直します。
+`alp ltsv` が空の表だけ返すときは、LTSV 化前のログが残っているか、LTSV 化が反映されていません。`sudo tail -1 /var/log/nginx/access.log` が `time:` で始まるかを見て、始まらなければ 2. の「s1: nginx を LTSV にする」に戻ります。
 
 読み方:
 
@@ -227,13 +356,15 @@ sudo pt-query-digest /var/log/mysql/mysql-slow.log
 
 ```bash
 # 作業機（手元の private-isu-terraform）で打つ
+BR=feature/work-<名前>   # 2. と同じ、自分の feature ブランチ
 git fetch origin
-git switch feature/backup 2>/dev/null || git switch -c feature/backup
-git pull --ff-only 2>/dev/null || true
+git switch "$BR" && git pull --ff-only
 # 例: 残す my.cnf の drop-in を置く（s3 の DB 用なら backup/s3）
 mkdir -p backup/s3/etc/mysql/mysql.conf.d
-# 各台で pull したあと sudo cp -a で /etc へ移す
-git add -A && git commit -m "tune: 残す設定" && git push -u origin feature/backup
+# 各台で pull したあと sudo install で /etc へ移す（2. の反映手順と同じ）
+git add -A && git commit -m "tune: 残す設定" && git push
 ```
+
+成功すると、各台で `git pull --ff-only` したときに追加したファイルが取り込まれます。
 
 戻すときは逆に `cp` で戻す。以後のチュートリアル（0040〜0110）でも残す変更はここに積む。
