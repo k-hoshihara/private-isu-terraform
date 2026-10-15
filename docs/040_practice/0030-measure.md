@@ -96,7 +96,7 @@ sudo mysql -e 'SELECT @@version, @@slow_query_log, @@slow_query_log_file, @@long
 
 ## 2. ログの形式を整える（s1: nginx LTSV / s3: slow log）
 
-alp は LTSV 形式のアクセスログを読みます。素体の nginx は combined 形式なので、そのままでは `alp ltsv` が空の表しか返しません。slow log も素体ではコメントアウトされています。分割後は nginx が s1、mysqld が s3 にいるので、台ごとに入れます。
+alp は LTSV 形式のアクセスログを読みます。素体の nginx は combined 形式なので、そのままでは `alp ltsv` が空の表しか返しません。slow log も素体ではコメントアウトされています。分割後は nginx が s1、mysqld が s3 にいるので、台ごとに入れます。最後に、s3 で初期状態のスキーマとインデックスを記録します。
 
 設定ファイルはサーバで直接編集しません。作業機で `backup/s1`・`backup/s3` に作る → push → 各台で pull → コピー → 反映、の順にします（[0020-split-2.md](0020-split-2.md) §8 と同じ流れです）。以下の `BR` は自分の feature ブランチ名に置き換えます。
 
@@ -222,12 +222,66 @@ sudo systemctl restart isu-python.service
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/
 ```
 
+### s3: スキーマとインデックスを記録する（初期状態）
+
+チューニングを始める前に、テーブル定義（スキーマ）と今あるインデックスをファイルに書き出して git に残します。これが比較の原点です。リポジトリ内に `.sql` は無いので、実 DB から取ります。以後インデックスを足したら同じコマンドで書き出し直し、`git diff` で増減を見ます（[0100-sql-tuning.md](0100-sql-tuning.md) の 3.）。
+
+?> リポジトリは isucon 所有です。SSM セッションで `sudo su - isucon` してから打ちます。root のまま書き出すとファイルが root 所有になり、`git pull` が失敗します。DB 名は `/home/isucon/env.sh` の `ISUCONP_DB_NAME`（素体では `isuconp`）です。
+
+まず画面で見ます。テーブルごとの行数（概算）と、インデックスの一覧です。
+
+```bash
+# s3 で打つ
+sudo mysql -t isuconp -e "SELECT table_name, table_rows FROM information_schema.tables
+  WHERE table_schema = DATABASE() ORDER BY table_name"
+sudo mysql -t isuconp -e "SELECT table_name, index_name, non_unique,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index) AS columns
+  FROM information_schema.statistics WHERE table_schema = DATABASE()
+  GROUP BY table_name, index_name, non_unique ORDER BY table_name, index_name"
+```
+
+`posts`・`comments`・`users` などのテーブルと、それぞれの `PRIMARY` が出れば成功です。`non_unique` が 0 のものは一意制約（例: `users.account_name`）です。主キー以外にどの列にインデックスが無いかを、ここで確認しておきます。
+
+次にファイルへ書き出します。`AUTO_INCREMENT=` の値はデータ件数で毎回変わり、差分が読みにくくなるので消します。
+
+```bash
+# s3 で打つ（isucon で）
+REPO=/home/isucon/private-isu-terraform
+mkdir -p "$REPO/backup/s3/sql"
+sudo mysqldump --no-data --skip-comments --skip-dump-date isuconp \
+  | sed -E 's/ AUTO_INCREMENT=[0-9]+//' > "$REPO/backup/s3/sql/schema.sql"
+sudo mysql -N isuconp -e "SELECT table_name, index_name, non_unique,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index)
+  FROM information_schema.statistics WHERE table_schema = DATABASE()
+  GROUP BY table_name, index_name, non_unique ORDER BY table_name, index_name" \
+  > "$REPO/backup/s3/sql/indexes-current.txt"
+grep -c 'CREATE TABLE' "$REPO/backup/s3/sql/schema.sql"
+cat "$REPO/backup/s3/sql/indexes-current.txt"
+```
+
+`grep -c` がテーブル数（0 でない数）を返し、`indexes-current.txt` に画面で見たのと同じ一覧が入っていれば成功です。
+
+s3 から push します。作業機からも同じブランチに push しているので、先に `pull --rebase` します。
+
+```bash
+# s3 で打つ（isucon で）
+BR=feature/work-<名前>
+cd "$REPO"
+git add backup/s3/sql
+git commit -m "s3: 初期スキーマとインデックスを記録"
+git pull --rebase origin "$BR"
+git push origin "$BR"
+```
+
+作業機で `git pull --ff-only` し、`backup/s3/sql/` の 2 ファイルが取り込まれたことを確認します。
+
 ### 観察すること
 
 - s1 の `access.log` の最新行が `time:...` で始まる LTSV になっている
 - s3 で `@@slow_query_log` が 1、`@@long_query_time` が 1 になっている
 - s1 の `curl` が 200 を返す
 - `backup/s1/etc/nginx/` と `backup/s3/etc/mysql/mysql.conf.d/` に、反映したファイルが入っている
+- `backup/s3/sql/schema.sql` と `indexes-current.txt` が git に入り、初期状態でどの列にインデックスがあるかを言える
 
 ## 3. 計測サイクルを回す
 

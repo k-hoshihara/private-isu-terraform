@@ -84,17 +84,51 @@ FROM posts WHERE user_id = 1 ORDER BY created_at DESC LIMIT 20;
 
 ## 3. インデックスを 1 本貼る
 
-等価条件の列を先頭に、範囲・ORDER BY を後ろに並べます。MySQL に `CREATE INDEX IF NOT EXISTS` は無いので、存在確認してから貼ります。
+等価条件の列を先頭に、範囲・ORDER BY を後ろに並べます。
 
-```sql
-SELECT COUNT(*) FROM information_schema.statistics
-WHERE table_schema = DATABASE()
-  AND table_name = 'comments'
-  AND index_name = 'idx_comments_post_created';
+インデックスは mysql に直接打たず、ファイルで管理します。作業機で `backup/s3/sql/indexes.sql`（貼りたいインデックスの一覧）に 1 行足す → push → s3 で pull して流す → `indexes-current.txt`（DB の実際の状態。[0030-measure.md](0030-measure.md) の 2. で初回を記録済み）を書き出し直す、の順です。`git diff` で何が増えたかが残ります。
 
--- 0 なら貼る。等価 → ORDER BY
-CREATE INDEX idx_comments_post_created ON comments (post_id, created_at);
+作業機で 1 行足します。
+
+```bash
+# 作業機で打つ
+BR=feature/work-<名前>
+git switch "$BR" && git pull --ff-only
+mkdir -p backup/s3/sql
+cat >> backup/s3/sql/indexes.sql <<'EOF'
+ALTER TABLE comments ADD INDEX idx_comments_post_created (post_id, created_at);
+EOF
+cat backup/s3/sql/indexes.sql
+git add backup/s3/sql/indexes.sql && git commit -m "index: comments(post_id, created_at)" && git push
 ```
+
+s3 で流します。MySQL に `CREATE INDEX IF NOT EXISTS` は無いので、`--force` を付けてファイル全体を流します。既にあるインデックスは `ERROR 1061 (42000): Duplicate key name` を出して読み飛ばされます（失敗ではありません）。
+
+```bash
+# s3 で打つ（isucon で）
+REPO=/home/isucon/private-isu-terraform
+BR=feature/work-<名前>
+cd "$REPO" && git switch "$BR" && git pull --ff-only
+sudo mysql --force isuconp < backup/s3/sql/indexes.sql
+# DB の実際の状態を書き出し直す（0030-measure.md の 2. と同じコマンド）
+sudo mysql -N isuconp -e "SELECT table_name, index_name, non_unique,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index)
+  FROM information_schema.statistics WHERE table_schema = DATABASE()
+  GROUP BY table_name, index_name, non_unique ORDER BY table_name, index_name" \
+  > backup/s3/sql/indexes-current.txt
+git diff backup/s3/sql/indexes-current.txt
+```
+
+`git diff` に `+comments	idx_comments_post_created	1	post_id,created_at` の 1 行だけが出れば成功です。何も出なければ貼れていないので、`mysql` の出力に 1061 以外のエラーが無いかを見ます。
+
+```bash
+# s3 で打つ（isucon で）
+git add backup/s3/sql/indexes-current.txt
+git commit -m "s3: index 反映 comments(post_id, created_at)"
+git pull --rebase origin "$BR" && git push origin "$BR"
+```
+
+?> `comments` は 10 万行あるので、`ALTER TABLE ... ADD INDEX` は数秒かかります。ベンチ中には流しません。
 
 貼ったら同じ `EXPLAIN` で `key` が変わったことを見てからベンチします。
 
@@ -114,13 +148,32 @@ sudo -iu isucon /home/isucon/private_isu/benchmarker/bin/benchmarker \
 echo "$(date -Iseconds)  score=  pass=  fail=  note=index comments(post_id,created_at)" >> ~/bench-notes/scores.txt
 ```
 
-残す変更は台ごとの `backup/s1`・`s2`・`s3` に積みます（DB のインデックスは `backup/s3` のメモに残します。[0030-measure.md](0030-measure.md) の「残す変更は backup/s1・s2・s3 に積む」の流儀）。
+効かなければ外します。次の 1 本へ進みます。**同時に貼りません。** 外すときも、ファイルと DB の両方から消します。
 
-効かなければ外します。次の 1 本へ進みます。**同時に貼りません。**
-
-```sql
-DROP INDEX idx_comments_post_created ON comments;
+```bash
+# 作業機で打つ。indexes.sql から該当行を消して push
+grep -v 'idx_comments_post_created' backup/s3/sql/indexes.sql > /tmp/indexes.sql && mv /tmp/indexes.sql backup/s3/sql/indexes.sql
+git add backup/s3/sql/indexes.sql && git commit -m "index: comments(post_id, created_at) を外す" && git push
 ```
+
+```bash
+# s3 で打つ（isucon で）
+cd "$REPO" && git pull --ff-only
+sudo mysql isuconp -e "ALTER TABLE comments DROP INDEX idx_comments_post_created"
+sudo mysql -N isuconp -e "SELECT table_name, index_name, non_unique,
+  GROUP_CONCAT(column_name ORDER BY seq_in_index)
+  FROM information_schema.statistics WHERE table_schema = DATABASE()
+  GROUP BY table_name, index_name, non_unique ORDER BY table_name, index_name" \
+  > backup/s3/sql/indexes-current.txt
+git diff backup/s3/sql/indexes-current.txt   # - の 1 行だけが出れば成功
+git add backup/s3/sql/indexes-current.txt
+git commit -m "s3: index 外す comments(post_id, created_at)"
+git pull --rebase origin "$BR" && git push origin "$BR"
+```
+
+`indexes.sql` に書いてあるのに `indexes-current.txt` に無い（または逆）なら、どちらかの手順が漏れています。研修の終わりに両者を突き合わせます。
+
+?> `/initialize` は `DELETE` と `UPDATE` だけでテーブルを作り直さないので、貼ったインデックスはベンチを回しても残ります。初期状態に戻すときは、`indexes-current.txt` を [0030-measure.md](0030-measure.md) の 2. で記録した初回版と比べ、増えた分を `DROP INDEX` します。
 
 再起動で初期化 SQL が DB を作り直す構成では、終盤にもう一度 `SHOW INDEX` で確認します（[0030-ops.md](../010_common/0030-ops.md) の「終盤チェック」）。
 
