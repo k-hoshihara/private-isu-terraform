@@ -1,3 +1,4 @@
+comments	idx_comments_post_created	1	post_id,created_at
 comments	PRIMARY	0	id
 posts	PRIMARY	0	id
 users	account_name	0	account_name
