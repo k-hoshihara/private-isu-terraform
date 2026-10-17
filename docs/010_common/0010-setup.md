@@ -137,25 +137,54 @@ which py-spy >/dev/null || sudo python3 -m pip install --break-system-packages p
 
 ## ログ（nginx LTSV / MySQL slow）
 
-入れる前に `.orig` を残す。フォーマットは `etc/nginx/ltsv.conf`。
+入れる前に `.orig` を残します。nginxの変更はs1、MySQLの変更はs3で行います。フォーマット定義は作業機で `backup/s1/etc/nginx/ltsv-format.conf` に用意し、git経由で配布します。この検証ではAMI側のcloneに作業機の `etc/` が無かったため、サーバー上で `etc/nginx/ltsv.conf` を参照する手順を使いません。
+
+復旧手順は [0020-measure.md](../040_practice/0020-measure.md) にも書いてあります。
 
 ```bash
+# 作業機。リポジトリのルートで実行する
+test -s etc/nginx/ltsv.conf || exit 1
+mkdir -p backup/s1/etc/nginx
+cp etc/nginx/ltsv.conf backup/s1/etc/nginx/ltsv-format.conf
+git add backup/s1/etc/nginx/ltsv-format.conf
+git diff --cached
+# 差分をレビューしてから利用者がcommit / pushする
+git commit -m "measure: nginxのLTSV定義を配布" && git push
+```
+
+サーバーではファイルが届いていることを確認してから設定を追加します。
+
+```bash
+# s1。0020で使っているfeatureブランチのまま
+REPO=/home/isucon/private-isu-terraform
+cd "$REPO" && git pull --ff-only
+test -s "$REPO/backup/s1/etc/nginx/ltsv-format.conf" || exit 1
 SITE=/etc/nginx/sites-enabled/isucon.conf
 sudo test -f "${SITE}.orig" || sudo cp -a "$SITE" "${SITE}.orig"
-# log_format は使う場所より前で定義する。conf.d/ は access_log の行より後で include されるので、
-# フォーマット定義だけ別ファイルに置いて mime.types の直後で include する（conf.d/ には置かない）
-sudo cp -a etc/nginx/ltsv.conf /etc/nginx/ltsv-format.conf
+# フォーマット定義を別ファイルに置く。conf.d/ は access_log の行より後で include されるので、
+# mime.types の直後に include します（conf.d/ には置きません）
+sudo cp -a "$REPO/backup/s1/etc/nginx/ltsv-format.conf" /etc/nginx/ltsv-format.conf
 # access_log があるのは nginx.conf（site conf には無い）。こちらの形式を ltsv に変える
 sudo test -f /etc/nginx/nginx.conf.orig || sudo cp -a /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
-sudo sed -i '\#include /etc/nginx/mime.types;#a include /etc/nginx/ltsv-format.conf;' /etc/nginx/nginx.conf
-sudo sed -i 's#access_log /var/log/nginx/access.log;#access_log /var/log/nginx/access.log ltsv;#' /etc/nginx/nginx.conf
+sudo grep -qF 'include /etc/nginx/ltsv-format.conf;' /etc/nginx/nginx.conf || \
+  sudo sed -i '\#include /etc/nginx/mime.types;#a include /etc/nginx/ltsv-format.conf;' /etc/nginx/nginx.conf
+sudo nginx -t || exit 1
+# 上の nginx -t が通ってから access_log を書き換えます。先に書くと `unknown log_format "ltsv"` で落ちます
+sudo sed -i -E 's#access_log[[:space:]]+/var/log/nginx/access\.log([[:space:]]+combined)?;#access_log /var/log/nginx/access.log ltsv;#' /etc/nginx/nginx.conf
 sudo nginx -t && sudo systemctl reload nginx
 sudo nginx -T 2>/dev/null | grep -E 'access_log|log_format ltsv' | head -5
 # LTSV 化したあとにログを回す（それ以前の combined 行は alp ltsv が捨てる）
-curl -s -o /dev/null http://127.0.0.1/ && tail -1 /var/log/nginx/access.log | cut -c1-120
+TS=$(date +%Y%m%d%H%M%S)
+if sudo test -f /var/log/nginx/access.log; then
+  sudo mv /var/log/nginx/access.log /var/log/nginx/access.log.$TS
+fi
+sudo nginx -s reopen
+curl -fsS -o /dev/null http://127.0.0.1/login
+sudo tail -1 /var/log/nginx/access.log | cut -c1-120
 ```
 
 ```bash
+# s3
 DROP=/etc/mysql/mysql.conf.d/99-isucon-slow.cnf
 sudo mkdir -p "$(dirname "$DROP")"
 sudo tee "$DROP" >/dev/null <<'EOF'
@@ -172,6 +201,8 @@ sudo systemctl restart mysql
 ```
 
 `long_query_time = 0` は drop-in に残しません（ベンチ 1 本で数百 MB〜GBになりディスクが埋まります）。全件キャプチャは `SET GLOBAL` で一時的に 0 にし、取り終わったら 1 に戻します。
+
+<a id="権限py-spy--ulimit"></a>
 
 ## 権限（py-spy / ulimit）
 
@@ -250,4 +281,3 @@ GitHub に届かないときは作業機でバイナリを取って `/usr/local/
 ```bash
 which alp slp oha py-spy
 ```
-

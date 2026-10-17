@@ -1,7 +1,7 @@
 # 0020 計測
 
 alp → slp。DB が抜けてから py-spy。配布は [0030-ops.md](0030-ops.md)。  
-1 台で順に手を動かすドリルは [../040_practice/0030-measure.md](../040_practice/0030-measure.md)。
+1 台で順に手を動かすドリルは [../040_practice/0020-measure.md](../040_practice/0020-measure.md)。
 
 ## 1 サイクル
 

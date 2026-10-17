@@ -1,7 +1,7 @@
 # 0040 参照
 
 ログの切り方、台数、レギュレーション寄りの約束。手順の本体は [0010-setup.md](0010-setup.md) / [0020-measure.md](0020-measure.md) / [0030-ops.md](0030-ops.md)。  
-役割分割（[040_practice/0020-split.md](../040_practice/0020-split-1.md)）や計測ドリル（[040_practice/0030-measure.md](../040_practice/0030-measure.md)）からもここにリンクする。
+役割分割（[040_practice/0110-split-1.md](../040_practice/0110-split-1.md)・[0110-split-2.md](../040_practice/0110-split-2.md)・[0110-split-3.md](../040_practice/0110-split-3.md)・[0110-split-4.md](../040_practice/0110-split-4.md)）や計測ドリル（[040_practice/0020-measure.md](../040_practice/0020-measure.md)）からもここにリンクする。
 
 当日の値は [config.env.example](../../config.env.example) を `config.env` に複製して埋める。
 
@@ -179,7 +179,7 @@ SET GLOBAL slow_query_log = 'OFF';
 
 ## 台数
 
-出典は過去大会の公開情報 / 優勝記。ここに無い年は書かない。
+出典は過去大会の公開情報 / 優勝記録。ここに無い年は書かない。
 
 | 大会 | 競技者サーバ | 備考 |
 | --- | --- | --- |
@@ -215,7 +215,7 @@ ISUCON14 / ISUCON2026 で形が同じ約束。
 
 ## このリポジトリ
 
-練習は自分の AWS で、指定 AMI を `ap-northeast-1` に立てる。インスタンスは `c7a.large`（T 系は使わない）。構築は [040_practice/0010-env.md](../040_practice/0010-env.md)。1 台は `webapp_instance_count = 1`、複数台は `3`。
+練習は自分の AWS で、指定 AMI を `ap-northeast-1` に立てる。インスタンスは `c7a.large`（T 系は使わない）。構築は [040_practice/0010-env.md](../040_practice/0010-env.md)。040_practice の本体は 1 台で進め、[0110-split-1.md](../040_practice/0110-split-1.md) の分割までに `webapp_instance_count = 3` にする。
 
 [config.env.example](../../config.env.example) で当日変えるもの:
 

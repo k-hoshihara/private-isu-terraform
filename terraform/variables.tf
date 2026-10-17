@@ -60,6 +60,16 @@ variable "webapp_instance_count" {
   }
 }
 
+variable "instance_types" {
+  description = <<-EOT
+    台ごとのインスタンスタイプ。省略時は webapp_instance_type を全台に使う。
+    0150 の「DB 台を大きくする」のように、1 台だけスペックを変えたときに
+    実体と管理を一致させる（stop/start で手動変更した値と同じにする）。
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_benchmarker_instance" {
   description = <<-EOT
     ベンチマーカー専用インスタンスを作成するかどうか。
