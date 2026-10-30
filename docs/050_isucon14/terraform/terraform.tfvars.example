@@ -1,0 +1,26 @@
+# terraform.tfvars として複製し、値を編集する
+#   cp terraform.tfvars.example terraform.tfvars
+
+# 自身のグローバル IP を /32 で指定する。確認: curl -s https://checkip.amazonaws.com
+# SSH(22) と決済モック(12345) の許可元になる。
+allowed_cidrs = ["203.0.113.1/32"]
+
+# 競技と同じ 3 台。0010〜0110 の 1 台構成をなぞるだけなら 1。
+app_instance_count        = 3
+app_instance_type         = "c5.large"
+benchmarker_instance_type = "c5.xlarge"
+
+# 0010 で作る既存キーを使う場合（既定）。鍵が無いと apply が失敗する。
+enable_ssh = true
+key_name   = "isucon14"
+
+# Terraform にキーペアを作らせる場合（秘密鍵は state に残らない）
+# enable_ssh           = true
+# key_name             = "isucon14"
+# ssh_public_key_path  = "~/.ssh/id_ed25519.pub"
+
+# ベンチを分離しない場合（同一の扱いにはしない。計測が濁る）
+# enable_benchmarker_instance = false
+
+# 台ごとにスペックを変える場合。省略時は app_instance_type を全台に使う。
+# instance_types = ["c5.large", "c5.large", "c5.large"]

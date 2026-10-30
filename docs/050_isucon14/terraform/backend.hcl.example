@@ -1,0 +1,4 @@
+# backend.hcl として複製し、bucket を自分のアカウント用に書き換える。
+# 親の terraform/backend.hcl と同じバケットでよい（key で分かれている）。
+#   cp backend.hcl.example backend.hcl
+bucket = "private-isu-tfstate-946846534349"

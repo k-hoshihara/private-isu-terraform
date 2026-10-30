@@ -26,18 +26,33 @@
 
 ## ISUCon 14（ISURIDE）を練習するとき
 
-private-isu ではなく ISUCon 14 の出題アプリ（ISURIDE）を練習する場合は [050_isucon14/](050_isucon14/README.md) を使います。`terraform/` は private-isu 用なので使いません。構築は公式 AMI（`ami-0e334c50145a3ee41`）から AWS CLI で行います。
+private-isu ではなく ISUCon 14 の出題アプリ（ISURIDE）を練習する場合は [050_isucon14/](050_isucon14/README.md) を使います。構築は [050_isucon14/terraform/](050_isucon14/terraform) の Terraform で行います。公式 AMI `ami-0e334c50145a3ee41` は公開停止しているため、公開が続いている ISUCon 14 AMI に差し替えています。
 
 | 番号 | 内容 |
 | --- | --- |
-| [0010](050_isucon14/0010-ami.md) | 公式 AMI からアプリ用 1 台とベンチ用 1 台を立てる |
-| [0020](050_isucon14/0020-https.md) | 失効済みの TLS 証明書を差し替える |
-| [0030](050_isucon14/0030-python.md) | Python 実装を起動する |
-| [0040](050_isucon14/0040-bench.md) | ベンチマーカーをビルドして 1 本回す |
-| [0050](050_isucon14/0050-measure.md) | alp・slow log・py-spy で計測する |
-| [0060](050_isucon14/0060-sql.md) | インデックスを足す |
-| [0070](050_isucon14/0070-nearby-chairs.md) | `nearby-chairs` の N+1 を潰す |
-| [0080](050_isucon14/0080-notification.md) | 通知を軽くする / SSE にする |
-| [0090](050_isucon14/0090-payment.md) | 決済の冪等と遅延 |
-| [0100](050_isucon14/0100-matching.md) | マッチングを速くする |
-| [0110](050_isucon14/0110-result.md) | 結果と後片付け |
+| [0010](050_isucon14/valid/0010-env.md) | Terraform でアプリ用 1 台とベンチ用 1 台を立てる |
+| [0015](050_isucon14/valid/0015-backup.md) | 変更を戻せるようにバックアップを取る |
+| [0020](050_isucon14/valid/0020-https.md) | TLS 証明書を差し替える |
+| [0030](050_isucon14/valid/0030-python.md) | Python 実装を起動する |
+| [0040](050_isucon14/valid/0040-bench.md) | ベンチマーカーをビルドして 1 本回す |
+| [0050](050_isucon14/valid/0050-measure.md) | alp・slow log・py-spy で計測の型を作る |
+| [0055](050_isucon14/valid/0055-measure-digest.md) | `performance_schema` で計測をやり直す |
+| [0060](050_isucon14/valid/0060-sql-index.md) | 索引で SQL を短くする |
+| [0070](050_isucon14/valid/0070-sql-columns.md) | 集計をやめて列で持つ |
+| [0080](050_isucon14/valid/0080-sql-n1.md) | N+1 を潰す |
+| [0090](050_isucon14/valid/0090-app-notification.md) | 通知の往復と COMMIT を減らす |
+| [0100](050_isucon14/valid/0100-app-payment.md) | 決済の冪等化 |
+| [0110](050_isucon14/valid/0110-app-matching.md) | マッチング（いちばん効く） |
+| [0120](050_isucon14/valid/0120-app-cache.md) | キャッシュと列で持つ |
+| [0130](050_isucon14/valid/0130-infra.md) | インフラ（nginx / gunicorn / ログ） |
+| [0140](050_isucon14/valid/0140-mysql-write.md) | MySQL の書き込み設定 |
+| [0150](050_isucon14/valid/0150-mw-lib.md) | ミドルウェアとライブラリ（プール・タイムアウト） |
+| [0160](050_isucon14/valid/0160-split.md) | 3 台に分割する |
+| [0170](050_isucon14/valid/0170-mysql-host.md) | MySQL を専用台に置く |
+| [0180](050_isucon14/valid/0180-split-sql.md) | 分割後の SQL と接続 |
+| [0190](050_isucon14/valid/0190-split-app.md) | 分割前提のアプリ |
+| [0200](050_isucon14/valid/0200-timeout.md) | タイムアウト |
+| [0210](050_isucon14/valid/0210-result.md) | 結果と後片付け |
+| [0220](050_isucon14/invalid/0220-more.md) | 追加検証 |
+
+0070 以降（SQL の続き → アプリ → インフラ → 分割 → 分割後のチューニング）は、単一インスタンスで 1 手ずつ実測しながら書いています。
